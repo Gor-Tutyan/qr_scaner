@@ -1,0 +1,42 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+    <title>Камера</title>
+    <style>body,html{margin:0;height:100%;background:#000;overflow:hidden}
+    #v{display:none;width:100vw;height:100vh;object-fit:cover}
+    .f{position:fixed;top:50%;left:50%;width:320px;height:320px;transform:translate(-50%,-50%);border:6px solid #4CAF50;border-radius:25px;pointer-events:none}
+    #i{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);width:90%;max-width:420px;background:rgba(0,0,0,.9);padding:20px;border-radius:25px;display:none}
+    input,button{width:100%;padding:18px;font-size:26px;margin:8px 0;border:none;border-radius:18px}
+    input{background:#fff;color:#000}button{background:#34A853;color:#fff}</style>
+    </head><body>
+    <video id="v" playsinline muted></video>
+    <div class="f"></div>
+    <div id="i"><input id="c" placeholder="Код клиента (12345)" autofocus><button onclick="send()">ОТПРАВИТЬ</button></div>
+    
+    <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script>
+    let sid=null; const v=document.getElementById('v'), i=document.getElementById('i');
+    navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}).then(s=>{
+      v.style.display="block"; v.srcObject=s; v.play(); requestAnimationFrame(tick);
+    }).catch(()=>{alert("Разреши камеру!");});
+    function tick(){
+      if(v.readyState===v.HAVE_ENOUGH_DATA){
+        const cv=document.createElement("canvas"); cv.width=v.videoWidth; cv.height=v.videoHeight;
+        cv.getContext("2d").drawImage(v,0,0);
+        const code=jsQR(cv.getContext("2d").getImageData(0,0,cv.width,cv.height).data,cv.width,cv.height);
+        if(code) try{const d=JSON.parse(code.data); if(d.sessionId){sid=d.sessionId; i.style.display="block";}}catch(e){}
+      }
+      requestAnimationFrame(tick);
+    }
+    async function send(){
+      const code=document.getElementById("c").value.trim();
+      if(!sid||!code) return;
+      const r=await fetch("/api/scan",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({sessionId:sid,customerCode:code})});
+      const j=await r.json();
+      if(j.success){
+        document.body.innerHTML=`<div style="padding:60px;color:#fff;text-align:center;font-size:40px">
+          <h1 style="color:#0f0">ГОТОВО!</h1>${j.data.first_name} ${j.data.last_name}<br>Карта: ${j.data.card}</div>`;
+      }else alert(j.error);
+    }
+    </script>
+    </body></html>
