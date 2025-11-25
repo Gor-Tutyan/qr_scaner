@@ -28,12 +28,20 @@
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script>
-    // Читаем sid ИЗ QR-КОДА (теперь точно не будет "устарела")
-    const urlParams = new URLSearchParams(location.search);
-    const sessionId = urlParams.get('sid');
+    // ВАЖНО: sessionId теперь вшивается сервером динамически!
+    // Поэтому убираем всю проверку на null — её делает уже сервер
+    const sessionId = window.SESSION_ID || null;
 
+    // Если сервер не подставил sid — значит ссылка битая (на всякий случай)
     if (!sessionId) {
-      document.body.innerHTML = "<h2 style='margin-top:100px'>Ссылка устарела или повреждена</h2>";
+      document.body.innerHTML = `
+        <h2 style="margin-top:100px;color:#fff">
+          Ссылка устарела или повреждена<br><br>
+          <button onclick="location.href='/'" style="padding:12px 24px;font-size:18px;background:#006400;border:none;border-radius:10px;color:#fff;cursor:pointer">
+            На главную
+          </button>
+        </h2>`;
+      throw new Error("No sessionId");
     }
 
     function sendToServer(code) {
@@ -47,15 +55,22 @@
       .then(r => r.json())
       .then(res => {
         if (res.success) {
-          document.body.innerHTML = `<h1>ГОТОВО!</h1><p style="font-size:24px">Карта успешно выдана</p>`;
+          document.body.innerHTML = `
+            <h1 style="margin-top:100px">ГОТОВО!</h1>
+            <p style="font-size:26px">Карта успешно выдана</p>
+            <button onclick="location.href='/'" style="margin-top:30px;padding:16px 32px;font-size:20px;background:#006400;border:none;border-radius:50px;color:#fff;cursor:pointer">
+              Новый клиент
+            </button>`;
         } else {
-          alert("Ошибка: " + (res.error || "Код не найден"));
+          alert("Ошибка: " + (res.error || "Клиент не найден"));
         }
       })
-      .catch(() => alert("Нет связи с сервером"));
+      .catch(err => {
+        console.error(err);
+        alert("Нет связи с сервером");
+      });
     }
 
-    // Сканер
     function startScanner() {
       const scanner = new Html5Qrcode("reader");
       scanner.start(
@@ -69,24 +84,22 @@
           }
         },
         () => {}
-      ).catch(() => {
-        // Если камера не работает — просто оставляем поле ввода
-        console.log("Камера недоступна");
+      ).catch(err => {
+        console.log("Камера недоступна:", err);
       });
     }
 
-    // Ручной ввод
     window.sendCode = function() {
       const code = document.getElementById("manualCode").value.replace(/\D/g, "");
       sendToServer(code);
     };
 
-    // Автозапуск сканера на телефоне
+    // Автозапуск сканера
     if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-      setTimeout(startScanner, 1000);
+      setTimeout(startScanner, 800);
     }
 
-    // Enter в поле = отправить
+    // Enter = отправить
     document.getElementById("manualCode").addEventListener("keyup", e => {
       if (e.key === "Enter") sendCode();
     });

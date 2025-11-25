@@ -193,25 +193,18 @@ app.post("/api/scan", (req, res) => {
 // === ВАЖНО: Динамическая отдача mobile-scan.html (чтобы sid всегда был актуальным) ===
 app.get("/mobile-scan.html", (req, res) => {
   const sid = req.query.sid;
+  const session = sessions.get(sid);
 
-  if (!sid || !sessions.has(sid)) {
-    return res.status(400).send(`
-      <h2 style="text-align:center;margin-top:20vh;color:#fff;background:#003087;height:100vh;padding-top:20vh;font-family:Arial,sans-serif">
-        Ссылка устарела или повреждена<br><br>
-        <button onclick="location.reload()" style="padding:15px 30px;font-size:18px;border:none;border-radius:10px;cursor:pointer">
-          Попробовать снова
-        </button>
-      </h2>`);
+  if (!sid || !session || session.scanned) {
+    const msg = !sid || !session ? "Ссылка устарела или повреждена" : "Карта уже выдана";
+    return res.send(`<h2 style="text-align:center;margin-top:20vh;color:#fff;background:#003087;height:100vh;padding-top:20vh;font-family:Arial">${msg}<br><br><button onclick="location.href='/'" style="padding:15px 30px;font-size:18px;border:none;border-radius:10px;cursor:pointer">На главную</button></h2>`);
   }
 
   let html = fs.readFileSync(path.join(__dirname, "public", "mobile-scan.html"), "utf8");
-
-  // Жёстко вшиваем правильный sid (чтобы не зависеть от query-параметра)
   html = html.replace(
-    /const sessionId = urlParams\.get\('sid'\);/,
+    'const sessionId = window.SESSION_ID || null;',
     `const sessionId = "${sid}";`
   );
-
   res.type("html").send(html);
 });
 
