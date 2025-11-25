@@ -4,8 +4,6 @@ const QRCode = require("qrcode");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
-const os = require("os");
-const { exec } = require("child_process");
 
 const app = express();
 app.use(express.json());
@@ -17,6 +15,9 @@ if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new sqlite3.Database(dbPath);
 const sessions = new Map();
+
+// Путь к файлу результата
+const PRINT_RESULT_FILE = path.join(__dirname, "public", "PrintResult.CPS2");
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS clients (
@@ -37,7 +38,7 @@ app.get("/", (req, res) => {
   QRCode.toDataURL(mobileUrl, { width: 500, margin: 2 }, (err, qrUrl) => {
     if (err) return res.status(500).send("QR Error");
 
-res.send(`<!DOCTYPE html>
+    res.send(`<!DOCTYPE html>
 <html lang="hy"><head><meta charset="UTF-8"><title>Unibank — Քարտի տրամադրում</title>
 <style>
   body{font-family:Arial,sans-serif;background:#f8f9fa;margin:0;padding:20px;text-align:center}
@@ -101,53 +102,52 @@ app.get("/api/status/:id", (req, res) => {
   if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
 
   db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
-    if (!row) return res.json({ error: "Клиент не найден" });
+    if (!row) return res.json({ error: "Հաճախորդը չի գտնվել" });
     res.json({
       success: true,
-      first_name: row.first_name || "ИВАН",
-      last_name: row.last_name || "ИВАНОВ",
+      first_name: row.first_name || "ԱՆՈՒՆ",
+      last_name: row.last_name || "ԱԶԳԱՆՈՒՆ",
       card_number: row.card_number || "4111111111111111",
       design: s.cardDesign || 1
     });
   });
 });
 
-// === ГЛАВНЫЙ ЭНДПОИНТ СКАНИРОВАНИЯ + УМНАЯ ПЕЧАТЬ ===
+// === ГЛАВНЫЙ ЭНДПОИНТ СКАНИРОВАНИЯ + ЗАПИСЬ В PrintResult.CPS2 ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
-  if (!sessionId || !customerCode) return res.json({ error: "Нет данных" });
+  if (!sessionId || !customerCode) return res.json({ error: "Տվյալներ չկան" });
 
   const s = sessions.get(sessionId);
-  if (!s) return res.json({ error: "Сессия истекла" });
+  if (!s) return res.json({ error: "Սեսիան ավարտվել է" });
 
   const code = customerCode.toString().trim().replace(/\D/g, "");
-  if (code.length < 4) return res.json({ error: "Короткий код" });
+  if (code.length < 4) return res.json({ error: "Կոդը շատ կարճ է" });
 
   db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
     if (err || !row) {
-      console.log("Клиент НЕ найден по коду:", code);
-      return res.json({ error: "Клиент не найден" });
+      console.log("Հաճախորդը ՉԻ գտնվել կոդով:", code);
+      return res.json({ error: "Հաճախորդը չի գտնվել" });
     }
 
     s.scanned = true;
     s.customerCode = code;
 
     const cleanCardNumber = (row.card_number || "").replace(/\s/g, "").trim();
-    console.log(`Клиент: ${row.first_name} ${row.last_name} | Карта: ${cleanCardNumber}`);
+    console.log(`Հաճախորդ՝ ${row.first_name} ${row.last_name} | Քարտ՝ ${cleanCardNumber}`);
 
-    // === ПОИСК СТРОКИ В .CPS2 ФАЙЛАХ ===
     const printsDir = path.join(__dirname, "public", "prints");
 
     fs.access(printsDir, err => {
       if (err) {
-        console.log("Папка public/prints НЕ найдена или недоступна");
-        return res.json({ success: true, printed: false, note: "Папка prints отсутствует" });
+        console.log("public/prints պապկան չի գտնվել");
+        return res.json({ success: true, saved: false, note: "prints պապկան բացակայում է" });
       }
 
       fs.readdir(printsDir, (err, files) => {
         if (err || !files || files.length === 0) {
-          console.log("В папке prints нет файлов");
-          return res.json({ success: true, printed: false, note: "Нет файлов" });
+          console.log("prints պապկան դատարկ է");
+          return res.json({ success: true, saved: false, note: "Ֆայլեր չկան" });
         }
 
         const cps2Files = files
@@ -155,11 +155,9 @@ app.post("/api/scan", (req, res) => {
           .map(f => path.join(printsDir, f));
 
         if (cps2Files.length === 0) {
-          console.log("Нет .cps2 файлов в папке prints");
-          return res.json({ success: true, printed: false, note: "Нет .cps2 файлов" });
+          console.log(".CPS2 ֆայլեր չկան");
+          return res.json({ success: true, saved: false, note: "Չկան .CPS2 ֆայլեր" });
         }
-
-        console.log(`Проверяем ${cps2Files.length} файл(ов):`, cps2Files.map(f => path.basename(f)).join(", "));
 
         let foundLine = null;
         let checked = 0;
@@ -167,11 +165,20 @@ app.post("/api/scan", (req, res) => {
         const checkNext = () => {
           if (checked >= cps2Files.length) {
             if (foundLine) {
-              printOnA4(foundLine);
-              res.json({ success: true, printed: true });
+              // ЗАПИСЫВАЕМ НАЙДЕННУЮ СТРОКУ В PrintResult.CPS2
+              fs.writeFile(PRINT_RESULT_FILE, foundLine.trim() + "\n", "utf8", (err) => {
+                if (err) {
+                  console.log("Սխալ PrintResult.CPS2 գրելիս:", err.message);
+                  res.json({ success: true, saved: false, error: "Ֆայլի գրառման սխալ" });
+                } else {
+                  console.log("ՀԱՋՈՂՈՒԹՅՈՒՆ → PrintResult.CPS2 թարմացվել է:");
+                  console.log(foundLine.trim());
+                  res.json({ success: true, saved: true, file: "PrintResult.CPS2" });
+                }
+              });
             } else {
-              console.log("СТРОКА С НОМЕРОМ КАРТЫ НЕ НАЙДЕНА НИ В ОДНОМ ФАЙЛЕ");
-              res.json({ success: true, printed: false, note: "Строка не найдена" });
+              console.log("Քարտի համարով տողը ՉԻ ԳՏՆՎԵԼ ոչ մի ֆայլում");
+              res.json({ success: true, saved: false, note: "Տողը չի գտնվել" });
             }
             return;
           }
@@ -179,17 +186,17 @@ app.post("/api/scan", (req, res) => {
           const filePath = cps2Files[checked++];
           fs.readFile(filePath, "utf8", (err, content) => {
             if (err) {
-              console.log(`Ошибка чтения ${path.basename(filePath)}:`, err.message);
+              console.log(`Սխալ ${path.basename(filePath)} կարդալիս:`, err.message);
               checkNext();
               return;
             }
 
             const line = content.split("\n").find(l => l.includes(cleanCardNumber) && l.trim() !== "");
             if (line) {
-              foundLine = line.trim();
-              console.log(`НАЙДЕНО в ${path.basename(filePath)} → ${foundLine}`);
-              printOnA4(foundLine);
-              res.json({ success: true, printed: true, file: path.basename(filePath) });
+              foundLine = line;
+              console.log(`ԳՏՆՎԵԼ է ${path.basename(filePath)} → ${line.trim()}`);
+              // Продолжаем, но уже с найденной строкой — потом запишем
+              checkNext();
             } else {
               checkNext();
             }
@@ -200,42 +207,6 @@ app.post("/api/scan", (req, res) => {
       });
     });
   });
-
-  // === ПЕЧАТЬ НА ОБЫЧНЫЙ ПРИНТЕР A4 ===
-  function printOnA4(text) {
-    console.log("ПЕЧАТАЕМ:", text);
-
-    const html = `
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<style>
-  @page { margin: 1.5cm; size: A4 portrait; }
-  body { font-family: Arial, sans-serif; text-align: center; padding-top: 6cm; }
-  .data { font-size: 52px; font-weight: bold; color: #003087; margin: 40px 0; line-height: 1.4; }
-  .success { font-size: 48px; color: #006400; margin-top: 80px; }
-</style>
-</head>
-<body>
-  <div class="data">${text.replace(/</g, "&lt;")}</div>
-  <div class="success">КАРТА УСПЕШНО ВЫДАНА</div>
-</body></html>`;
-
-    const tempFile = path.join(os.tmpdir(), `unibank_${Date.now()}.html`);
-    fs.writeFileSync(tempFile, html, "utf8");
-
-    const cmd = process.platform === "win32"
-      ? `powershell -Command "Start-Process '${tempFile}' -Verb Print"`
-      : `lp "${tempFile}"`;
-
-    exec(cmd, { timeout: 20000 }, (err, stdout, stderr) => {
-      if (err || stderr) {
-        console.log("ОШИБКА ПЕЧАТИ:", err?.message || stderr);
-      } else {
-        console.log("УСПЕШНО ОТПРАВЛЕНО НА ПРИНТЕР");
-      }
-      setTimeout(() => fs.unlink(tempFile, () => {}), 20000);
-    });
-  }
 });
 
 // Мобильная страница
@@ -244,13 +215,13 @@ app.get("/mobile-scan.html", (req, res) => {
   if (sid && /^[a-z0-9]{32}$/.test(sid)) {
     res.sendFile(path.join(__dirname, "public", "mobile-scan.html"));
   } else {
-    res.status(400).send("Неверный sid");
+    res.status(400).send("Սխալ sid");
   }
 });
 
 app.get("/mobile", (req, res) => res.redirect("/"));
 
-// Очистка старых сессий каждые 5 минут
+// Очистка старых сессий
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of sessions) {
@@ -260,6 +231,6 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("Сервер Unibank запущен!");
+  console.log("Unibank սերվերը գործարկվել է!");
   console.log(`http://localhost:${PORT}`);
 });
