@@ -9,26 +9,20 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
-// ==================== ПУТЬ К БАЗЕ (работает на Render и локально) ====================
+// ================ БАЗА ДАННЫХ (работает на Render!) ================
 const isProduction = process.env.RENDER || process.env.NODE_ENV === "production";
-let dbPath;
+const dbPath = isProduction 
+  ? "/tmp/database.sqlite" 
+  : path.join(__dirname, "db", "database.sqlite");
 
-if (isProduction) {
-  dbPath = "/tmp/database.sqlite";
-} else {
-  const dbDir = path.join(__dirname, "db");
-  fs.mkdirSync(dbDir, { recursive: true });
-  dbPath = path.join(dbDir, "database.sqlite");
-}
+if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) console.error("Ошибка подключения к БД:", err.message);
-  else console.log(`База подключена: ${dbPath}`);
+  err ? console.error("БД ошибка:", err) : console.log("БД подключена:", dbPath);
 });
 
 const sessions = new Map();
 
-// Создаём таблицу
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS clients (
     client_code TEXT PRIMARY KEY,
@@ -38,145 +32,150 @@ db.serialize(() => {
   )`);
 });
 
-// ==================== ГЛАВНАЯ — КАССА ====================
+// ================ ГЛАВНАЯ СТРАНИЦА — КАССА ================
 app.get("/", (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
-  sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now() });
+  sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
 
-  QRCode.toDataURL(JSON.stringify({ sessionId }), { width: 500, margin: 2 }, (err, qrUrl) => {
-    if (err) return res.status(500).send("QR error");
-
-    res.send(`<!DOCTYPE html>
+  res.send(`
+<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Касса — QR сканер</title>
+  <title>Касса</title>
   <style>
-    body {font-family: Arial, sans-serif; text-align: center; padding: 40px; background: #f5f5f5; margin:0; min-height:100vh;}
-    .qr {background: white; padding: 30px; border-radius: 20px; display: inline-block; box-shadow: 0 10px 30px rgba(0,0,0,0.15);}
-    #status {margin: 30px auto; max-width: 600px;}
-    .success-card {background: white; padding: 35px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.15);}
-    .card-number {font-family: 'Courier New', monospace; font-size: 32px; letter-spacing: 5px; color: #0066cc; font-weight: bold;}
-    .no-card {color: #999; font-style: italic; font-size: 24px;}
-    button {padding: 14px 36px; font-size: 18px; background: #007bff; color: white; border: none; border-radius: 12px; cursor: pointer;}
-    code {background:#eee; padding:4px 8px; border-radius:6px; font-family:monospace;}
+    body{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px;text-align:center}
+    h1{margin:30px 0;font-size:28px}
+    .designs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:25px;max-width:1100px;margin:0 auto}
+    .card-btn{border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.2);cursor:pointer;transition:0.3s;background:white}
+    .card-btn:hover{transform:translateY(-10px);box-shadow:0 20px 40px rgba(0,0,0,0.3)}
+    .card-btn img{width:100%;display:block}
+    .card-name{background:#222;color:#fff;padding:14px;font-size:19px;font-weight:bold}
+    #qr-area{display:none;margin:40px auto;padding:30px;background:white;border-radius:20px;box-shadow:0 10px 40px rgba(0,0,0,0.15);max-width:600px}
+    #qr-img{background:white;padding:20px;border-radius:15px;display:inline-block}
+    #status{margin:30px auto;padding:25px;background:#fffbe6;border-radius:12px;max-width:600px;font-size:18px}
+    .result-card{border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.3);max-width:500px;margin:40px auto}
+    .result-card img{width:100%}
+    .info{padding:25px;background:rgba(0,0,0,0.85);color:white}
+    .name{font-size:30px;font-weight:bold;margin:10px 0}
+    .number{font-family:monospace;font-size:32px;letter-spacing:6px;color:#0f0}
+    button{background:#007bff;color:white;padding:14px 32px;font-size:18px;border:none;border-radius:12px;cursor:pointer;margin:10px}
   </style>
 </head>
 <body>
-  <h1>Покажите клиенту этот QR-код</h1>
-  <div class="qr"><img src="${qrUrl}" alt="QR"></div>
-  <p><strong>ID:</strong> <code>${sessionId}</code></p>
 
-  <div id="status"><div style="padding:20px;background:#fffbe6;border-radius:12px;">Ожидаем код клиента...</div></div>
-  <button onclick="location.reload()">Новый QR</button>
+  <h1>Выберите дизайн карты</h1>
+  <div class="designs">
+    ${[1,2,3,4].map(i => `
+      <div class="card-btn" onclick="choose(${i})">
+        <img src="/cards/card${i}.png" alt="Дизайн ${i}">
+        <div class="card-name">Дизайн ${i}</div>
+      </div>
+    `).join('')}
+  </div>
+
+  <div id="qr-area">
+    <h2>Покажите клиенту QR-код</h2>
+    <div id="qr-img"></div>
+    <p style="margin:20px 0"><strong>Выбран:</strong> Дизайн <span id="sel">—</span></p>
+    <div id="status">Ожидаем код клиента...</div>
+    <button onclick="location.reload()">Новый клиент</button>
+  </div>
 
   <script>
     const sid = "${sessionId}";
-    function formatCard(n) {
-      return n ? n.toString().replace(/(.{4})/g, '$1 ').trim() : '<span class="no-card">не привязана</span>';
+
+    function choose(d) {
+      fetch("/api/set-design", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:sid,design:d})});
+      document.querySelector(".designs").style.display="none";
+      document.getElementById("qr-area").style.display="block";
+      document.getElementById("sel").textContent = d;
+
+      QRCode.toDataURL(JSON.stringify({sessionId:sid}), {width:500,margin:2}, (e,url) => {
+        document.getElementById("qr-img").innerHTML = '<img src="'+url+'" style="width:100%;max-width:400px">';
+        poll();
+      });
     }
-    function check() {
-      fetch("/api/status/" + sid)
-        .then(r => r.json())
-        .then(d => {
+
+    function poll() {
+      const i = setInterval(() => {
+        fetch("/api/status/"+sid).then(r=>r.json()).then(d => {
           if (d.success) {
+            clearInterval(i);
             document.getElementById("status").innerHTML = 
-              '<div class="success-card">' +
-                '<h2 style="color:#0b0;margin:0 0 20px">Клиент найден!</h2>' +
-                '<p style="font-size:18px"><strong>Код:</strong> ' + (d.customerCode || "—") + '</p>' +
-                '<p style="font-size:26px;margin:20px 0"><strong>' + (d.first_name || "") + " " + (d.last_name || "") + '</strong></p>' +
-                '<div style="margin:25px 0"><strong style="font-size:20px">Карта:</strong><br>' +
-                  '<div class="card-number">' + formatCard(d.card_number) + '</div>' +
+              '<div class="result-card">' +
+                '<img src="/cards/card'+(d.design||1)+'.png" alt="Карта">' +
+                '<div class="info">' +
+                  '<div class="name">'+d.first_name+' '+d.last_name+'</div>' +
+                  '<div class="number">'+(d.card_number ? d.card_number.replace(/(.{4})/g,"$1 ").trim() : "—")+'</div>' +
                 '</div>' +
               '</div>';
-          } else if (d.pending) {
-            document.getElementById("status").innerHTML = '<div style="padding:20px;background:#fffbe6;border-radius:12px;">Ожидаем код клиента...</div>';
-          } else {
-            document.getElementById("status").innerHTML = '<div style="color:red;background:#ffebee;padding:20px;border-radius:12px">Ошибка: ' + (d.error || "неизвестно") + '</div>';
           }
-        })
-        .catch(() => document.getElementById("status").innerHTML = "Нет связи");
+        });
+      }, 2000);
     }
-    setInterval(check, 2500); check();
   </script>
 </body>
-</html>`);
-  });
+</html>
+  `);
 });
 
-// ==================== МОБИЛЬНЫЕ СТРАНИЦЫ ====================
-app.get("/mobile", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile.html")));
-app.get("/mobile-scan", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile-scan.html")));
+// ================ API ================
+app.post("/api/set-design", (req, res) => {
+  const { sessionId, design } = req.body;
+  const s = sessions.get(sessionId);
+  if (s) s.cardDesign = design;
+  res.json({ok:true});
+});
 
-// ==================== API: статус сессии ====================
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
-  if (!s) return res.json({ error: "Сессия устарела" });
-
+  if (!s) return res.json({error:"Сессия устарела"});
   if (s.scanned && s.customerCode) {
-    db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
-      if (err || !row) return res.json({ error: "Клиент не найден" });
+    db.get("SELECT * FROM clients WHERE client_code=?", [s.customerCode], (err, row) => {
+      if (err || !row) return res.json({error:"Клиент не найден"});
       res.json({
         success: true,
-        customerCode: s.customerCode,
         first_name: row.first_name || "",
         last_name: row.last_name || "",
-        card_number: row.card_number || null
+        card_number: row.card_number || null,
+        design: s.cardDesign || 1
       });
     });
-  } else {
-    res.json({ pending: true });
-  }
+  } else res.json({pending:true});
 });
 
-// ==================== ГЛАВНОЕ ИСПРАВЛЕНИЕ: поиск клиента ====================
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   const s = sessions.get(sessionId);
-  if (!s) return res.json({ error: "Сессия не найдена" });
+  if (!s) return res.json({error:"Сессия не найдена"});
 
-  // ОЧИЩАЕМ код: убираем пробелы, оставляем только цифры
-  let code = customerCode?.toString().trim();
-  if (!code) return res.json({ error: "Код пустой" });
+  const code = customerCode.toString().trim().replace(/\D/g, "");
+  if (!code) return res.json({error:"Код пустой"});
 
-  code = code.replace(/\D/g, ""); // только цифры
-  if (code.length === 0) return res.json({ error: "Код должен содержать цифры" });
-
-  console.log(`[SCAN] Поиск клиента по коду: "${code}"`);
-
-  db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
-    if (err) {
-      console.error("Ошибка БД:", err);
-      return res.json({ error: "Ошибка сервера" });
-    }
+  db.get("SELECT * FROM clients WHERE client_code=?", [code], (err, row) => {
     if (row) {
       s.customerCode = code;
       s.scanned = true;
-      console.log(`Клиент НАЙДЕН: ${row.first_name} ${row.last_name} | Карта: ${row.card_number}`);
-      res.json({ success: true, data: row });
-    } else {
-      console.log(`Клиент с кодом "${code}" НЕ НАЙДЕН`);
-      // Для отладки — покажем все коды в базе
-      db.all("SELECT client_code FROM clients", (_, rows) => {
-        console.log("Доступные коды в базе:", rows.map(r => r.client_code).join(", "));
-      });
-      res.json({ error: `Клиент с кодом "${code}" не найден` });
-    }
+      res.json({success:true, data:row});
+    } else res.json({error:"Клиент не найден"});
   });
 });
+
+// Мобильные страницы
+app.get("/mobile", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile.html")));
+app.get("/mobile-scan", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile-scan.html")));
 
 // Очистка старых сессий
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of sessions) {
-    if (now - v.timestamp > 10 * 60 * 1000) sessions.delete(k);
-  }
+  for (const [k, v] of sessions) if (now - v.timestamp > 600000) sessions.delete(k);
 }, 300000);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Сервер запущен!");
   console.log(`Касса → http://localhost:${PORT}`);
-  console.log(`Мобильная → http://localhost:${PORT}/mobile`);
+  console.log(`Телефон → http://localhost:${PORT}/mobile`);
 });
