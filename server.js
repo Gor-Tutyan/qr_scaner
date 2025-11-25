@@ -9,7 +9,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
-// ================ БАЗА ДАННЫХ (работает на Render!) ================
+// ================ БАЗА ДАННЫХ ================
 const isProduction = process.env.RENDER || process.env.NODE_ENV === "production";
 const dbPath = isProduction 
   ? "/tmp/database.sqlite" 
@@ -18,7 +18,7 @@ const dbPath = isProduction
 if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new sqlite3.Database(dbPath, (err) => {
-  err ? console.error("БД ошибка:", err) : console.log("БД подключена:", dbPath);
+  err ? console.error("Ошибка БД:", err) : console.log("БД подключена:", dbPath);
 });
 
 const sessions = new Map();
@@ -35,18 +35,27 @@ db.serialize(() => {
 // ================ ГЛАВНАЯ СТРАНИЦА — КАССА ================
 app.get("/", (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
-  sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
+  sessions.set(sessionId, { 
+    scanned: false, 
+    customerCode: null, 
+    timestamp: Date.now(), 
+    cardDesign: null 
+  });
 
-  res.send(`
+  // Генерируем QR на сервере
+  QRCode.toDataURL(JSON.stringify({ sessionId }), { width: 500, margin: 2 }, (err, qrUrl) => {
+    if (err) return res.status(500).send("Ошибка генерации QR");
+
+    res.send(`
 <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Касса</title>
+  <title>Касса — выбор карты</title>
   <style>
     body{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px;text-align:center}
-    h1{margin:30px 0;font-size:28px}
+    h1{margin:30px 0 40px;font-size:28px}
     .designs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:25px;max-width:1100px;margin:0 auto}
     .card-btn{border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.2);cursor:pointer;transition:0.3s;background:white}
     .card-btn:hover{transform:translateY(-10px);box-shadow:0 20px 40px rgba(0,0,0,0.3)}
@@ -65,76 +74,84 @@ app.get("/", (req, res) => {
 </head>
 <body>
 
-  <h1>Выберите дизайн карты</h1>
+  <h1>Выберите дизайн карты клиента</h1>
   <div class="designs">
     ${[1,2,3,4].map(i => `
       <div class="card-btn" onclick="choose(${i})">
-        <img src="/cards/card${i}.png" alt="Дизайн ${i}">
+        <img src="/cards/card${i}.jpg" alt="Дизайн ${i}">
         <div class="card-name">Дизайн ${i}</div>
       </div>
     `).join('')}
   </div>
 
   <div id="qr-area">
-    <h2>Покажите клиенту QR-код</h2>
-    <div id="qr-img"></div>
-    <p style="margin:20px 0"><strong>Выбран:</strong> Дизайн <span id="sel">—</span></p>
-    <div id="status">Ожидаем код клиента...</div>
+    <h2>Покажите клиенту этот QR-код</h2>
+    <div id="qr-img"><img src="${qrUrl}" style="width:100%;max-width:400px"></div>
+    <p style="margin:20px 0"><strong>Выбран дизайн:</strong> <span id="sel">—</span></p>
+    <div id="status">Ожидаем сканирование и ввод кода...</div>
     <button onclick="location.reload()">Новый клиент</button>
   </div>
 
   <script>
     const sid = "${sessionId}";
 
-    function choose(d) {
-      fetch("/api/set-design", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:sid,design:d})});
-      document.querySelector(".designs").style.display="none";
-      document.getElementById("qr-area").style.display="block";
-      document.getElementById("sel").textContent = d;
-
-      QRCode.toDataURL(JSON.stringify({sessionId:sid}), {width:500,margin:2}, (e,url) => {
-        document.getElementById("qr-img").innerHTML = '<img src="'+url+'" style="width:100%;max-width:400px">';
-        poll();
+    function choose(design) {
+      fetch("/api/set-design", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({sessionId: sid, design})
       });
+
+      document.querySelector(".designs").style.display = "none";
+      document.getElementById("qr-area").style.display = "block";
+      document.getElementById("sel").textContent = design;
+      startPolling();
     }
 
-    function poll() {
-      const i = setInterval(() => {
-        fetch("/api/status/"+sid).then(r=>r.json()).then(d => {
-          if (d.success) {
-            clearInterval(i);
-            document.getElementById("status").innerHTML = 
-              '<div class="result-card">' +
-                '<img src="/cards/card'+(d.design||1)+'.png" alt="Карта">' +
-                '<div class="info">' +
-                  '<div class="name">'+d.first_name+' '+d.last_name+'</div>' +
-                  '<div class="number">'+(d.card_number ? d.card_number.replace(/(.{4})/g,"$1 ").trim() : "—")+'</div>' +
-                '</div>' +
-              '</div>';
-          }
-        });
+    function startPolling() {
+      const interval = setInterval(() => {
+        fetch("/api/status/" + sid)
+          .then(r => r.json())
+          .then(data => {
+            if (data.success) {
+              clearInterval(interval);
+              document.getElementById("status").innerHTML = 
+                '<div class="result-card">' +
+                  '<img src="/cards/card' + (data.design || 1) + '.jpg" alt="Карта">' +
+                  '<div class="info">' +
+                    '<div class="name">' + data.first_name + ' ' + data.last_name + '</div>' +
+                    '<div class="number">' + 
+                      (data.card_number ? data.card_number.replace(/(.{4})/g,"$1 ").trim() : "—") +
+                    '</div>' +
+                  '</div>' +
+                '</div>';
+            }
+          })
+          .catch(() => {});
       }, 2000);
     }
   </script>
 </body>
 </html>
-  `);
+    `);
+  });
 });
 
 // ================ API ================
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
   const s = sessions.get(sessionId);
-  if (s) s.cardDesign = design;
-  res.json({ok:true});
+  if (s) s.cardDesign = Number(design);
+  res.json({ok: true});
 });
 
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
-  if (!s) return res.json({error:"Сессия устарела"});
+  if (!s) return res.json({error: "Сессия устарела"});
+
   if (s.scanned && s.customerCode) {
-    db.get("SELECT * FROM clients WHERE client_code=?", [s.customerCode], (err, row) => {
-      if (err || !row) return res.json({error:"Клиент не найден"});
+    db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
+      if (err || !row) return res.json({error: "Клиент не найден"});
       res.json({
         success: true,
         first_name: row.first_name || "",
@@ -143,23 +160,28 @@ app.get("/api/status/:id", (req, res) => {
         design: s.cardDesign || 1
       });
     });
-  } else res.json({pending:true});
+  } else {
+    res.json({pending: true});
+  }
 });
 
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   const s = sessions.get(sessionId);
-  if (!s) return res.json({error:"Сессия не найдена"});
+  if (!s) return res.json({error: "Сессия не найдена"});
 
-  const code = customerCode.toString().trim().replace(/\D/g, "");
-  if (!code) return res.json({error:"Код пустой"});
+  const code = customerCode?.toString().trim().replace(/\D/g, "");
+  if (!code) return res.json({error: "Код пустой"});
 
-  db.get("SELECT * FROM clients WHERE client_code=?", [code], (err, row) => {
+  db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
+    if (err) return res.json({error: "Ошибка сервера"});
     if (row) {
       s.customerCode = code;
       s.scanned = true;
-      res.json({success:true, data:row});
-    } else res.json({error:"Клиент не найден"});
+      res.json({success: true, data: row});
+    } else {
+      res.json({error: "Клиент не найден"});
+    }
   });
 });
 
@@ -170,7 +192,9 @@ app.get("/mobile-scan", (req, res) => res.sendFile(path.join(__dirname, "public"
 // Очистка старых сессий
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of sessions) if (now - v.timestamp > 600000) sessions.delete(k);
+  for (const [k, v] of sessions) {
+    if (now - v.timestamp > 10 * 60 * 1000) sessions.delete(k);
+  }
 }, 300000);
 
 const PORT = process.env.PORT || 3000;
