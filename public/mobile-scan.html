@@ -4,35 +4,110 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="mobile-web-app-capable" content="yes">
-  <title>Сканер карты — Unibank</title>
+  <title>Unibank — Подтверждение выдачи</title>
   <style>
-    body, html { margin:0; padding:0; height:100%; background:#000; color:#fff; overflow:hidden; font-family:Arial, sans-serif; }
-    #start { display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; background:#111; }
-    button { background:#34A853; color:#fff; border:none; padding:20px 50px; font-size:28px; border-radius:20px; cursor:pointer; box-shadow:0 8px 20px rgba(0,0,0,0.4); }
-    #video { display:none; width:100vw; height:100vh; object-fit:cover; }
-    .frame { position:fixed; top:50%; left:50%; width:340px; height:340px; transform:translate(-50%,-50%); border:6px solid #4CAF50; border-radius:25px; pointer-events:none; z-index:10; box-shadow:0 0 30px rgba(76,175,80,0.6); }
-    #input { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); width:90%; max-width:500px; background:rgba(0,0,0,0.92); padding:25px; border-radius:25px; display:none; backdrop-filter:blur(10px); }
-    input { width:100%; padding:20px; font-size:28px; margin:15px 0; border:none; border-radius:18px; text-align:center; }
-    button:active { transform:scale(0.95); }
-    #success { padding:40px; font-size:32px; text-align:center; }
-    h1 { color:#0f9d58; margin:20px 0; }
+    :root {
+      --primary: #003087;
+      --accent: #00A651;
+      --bg-dark: #0b1e3d;
+      --text-light: #ffffff;
+    }
+
+    body, html {
+      margin:0; padding:0; height:100%; background:var(--bg-dark); color:var(--text-light);
+      overflow:hidden; font-family:"Segoe UI",Arial,sans-serif; background: linear-gradient(135deg, #0b1e3d 0%, #001f4d 100%);
+    }
+
+    /* === ЭКРАН СТАРТА === */
+    #start {
+      display:flex; flex-direction:column; justify-content:center; align-items:center;
+      height:100%; text-align:center; padding:20px; box-sizing:border-box;
+    }
+    #start h1 {
+      font-size:38px; margin:0 0 20px; color:var(--accent); font-weight:800; text-shadow:0 2px 10px rgba(0,166,81,0.4);
+    }
+    #start p {
+      font-size:20px; opacity:0.9; margin-bottom:40px; max-width:90%;
+    }
+    button.big {
+      background:var(--accent); color:white; border:none; padding:18px 60px;
+      font-size:28px; font-weight:bold; border-radius:30px; cursor:pointer;
+      box-shadow:0 10px 30px rgba(0,166,81,0.4); transition:all 0.3s;
+    }
+    button.big:active { transform:scale(0.95); }
+
+    /* === КАМЕРА === */
+    #video {
+      display:none; width:100vw; height:100vh; object-fit:cover; position:fixed; top:0; left:0; z-index:1;
+    }
+    .frame {
+      position:fixed; top:50%; left:50%; width:360px; height:360px;
+      transform:translate(-50%,-50%); pointer-events:none; z-index:10;
+      border:7px solid var(--accent); border-radius:30px;
+      box-shadow:0 0 40px rgba(0,166,81,0.7), inset 0 0 40px rgba(0,166,81,0.3);
+      background:rgba(0,166,81,0.05);
+    }
+    .frame::before {
+      content:""; position:absolute; inset:20px; border:3px dashed rgba(255,255,255,0.4); border-radius:25px;
+    }
+
+    /* === ПОЛЕ ВВОДА === */
+    #input {
+      position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+      width:90%; max-width:500px; background:rgba(0,48,135,0.95); padding:30px;
+      border-radius:30px; display:none; z-index:20; backdrop-filter:blur(15px);
+      border:2px solid rgba(0,166,81,0.5); box-shadow:0 15px 40px rgba(0,0,0,0.6);
+    }
+    input {
+      width:100%; padding:22px; font-size:30px; margin:15px 0; border:none;
+      border-radius:20px; text-align:center; background:white; color:#000;
+      box-shadow:inset 0 3px 10px rgba(0,0,0,0.1);
+    }
+    button.confirm {
+      width:100%; padding:20px; font-size:28px; font-weight:bold;
+      background:var(--accent); color:white; border:none; border-radius:20px;
+      cursor:pointer; margin-top:15px; box-shadow:0 8px 25px rgba(0,166,81,0.4);
+    }
+    button.confirm:active { transform:scale(0.97); }
+
+    /* === УСПЕХ === */
+    #success {
+      position:fixed; inset:0; display:flex; flex-direction:column;
+      justify-content:center; align-items:center; background:rgba(0,0,0,0.9); z-index:30;
+      animation:fadeIn 0.6s;
+    }
+    #success h1 {
+      font-size:52px; color:var(--accent); margin:0 0 20px;
+      text-shadow:0 0 20px rgba(0,166,81,0.6);
+    }
+    #success div {
+      font-size:36px; margin:15px 0; animation:pulse 2s infinite;
+    }
+
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+    @keyframes pulse { 0%,100%{opacity:0.8} 50%{opacity:1} }
   </style>
 </head>
 <body>
 
+  <!-- СТАРТОВЫЙ ЭКРАН -->
   <div id="start">
-    <h1>Сканирование карты</h1>
-    <button onclick="go()">ОТКРЫТЬ КАМЕРУ</button>
+    <h1>Unibank</h1>
+    <p>Подтверждение выдачи карты</p>
+    <button class="big" onclick="go()">ОТКРЫТЬ КАМЕРУ</button>
   </div>
 
+  <!-- КАМЕРА + ПРИЦЕЛ -->
   <video id="video" playsinline muted></video>
   <div class="frame"></div>
 
+  <!-- ВВОД КОДА -->
   <div id="input">
     <input type="text" id="code" placeholder="Введите код клиента" autofocus autocomplete="off">
-    <button onclick="send()">ПОДТВЕРДИТЬ</button>
+    <button class="confirm" onclick="send()">ПОДТВЕРДИТЬ</button>
   </div>
 
+  <!-- СКРИПТ — НЕ ТРОГАЕМ! -->
   <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
   <script>
     let sessionId = null;
@@ -98,7 +173,6 @@
     }
 
     function handleQR(data) {
-      // 1. Сначала пробуем как URL с параметром sid
       try {
         const url = new URL(data);
         const sid = url.searchParams.get("sid");
@@ -109,7 +183,6 @@
         }
       } catch (_) {}
 
-      // 2. Потом как JSON (на случай если вы потом перейдёте на JSON)
       try {
         const json = JSON.parse(data);
         if (json.sessionId) {
@@ -145,8 +218,8 @@
         document.body.innerHTML = `
           <div id="success">
             <h1>ГОТОВО!</h1>
-            Карта успешно выдана<br><br>
-            <div style="color:#0f9d58; font-size:40px;">Данные отправлены на кассу</div>
+            <div>Карта успешно выдана</div>
+            <div>Данные отправлены на кассу</div>
           </div>`;
       } else {
         alert("Ошибка: " + (json.error || "Клиент не найден"));
@@ -155,7 +228,6 @@
       }
     }
 
-    // Enter в поле ввода
     document.addEventListener("keypress", e => {
       if (e.key === "Enter" && document.getElementById("input").style.display === "block") {
         send();
