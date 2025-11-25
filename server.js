@@ -4,6 +4,7 @@ const QRCode = require("qrcode");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
+const os = require("os");
 const { exec } = require("child_process");
 
 const app = express();
@@ -30,16 +31,18 @@ app.get("/", (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
   sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
 
-  QRCode.toDataURL(JSON.stringify({ sessionId }), { width: 500, margin: 2 }, (err, qrUrl) => {
+  const mobileUrl = `${req.protocol}://${req.get("host")}/mobile-scan.html?sid=${sessionId}`;
+
+  QRCode.toDataURL(mobileUrl, { width: 500, margin: 2 }, (err, qrUrl) => {
     if (err) return res.status(500).send("QR Error");
 
     res.send(`<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Unibank</title>
+<html><head><meta charset="UTF-8"><title>Unibank — Выдача карты</title>
 <style>
   body{font-family:Arial;background:#f8f9fa;margin:0;padding:20px;text-align:center}
-  h1{margin:40px 0 50px;font-size:32px;color:#003087}
+  h1{margin:40px 0 50px;font-size:32px;color:#003087;font-weight:bold}
   .designs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;max-width:1200px;margin:0 auto}
-  .card-btn{border-radius:20px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,0.25);cursor:pointer;transition:.3s}
+  .card-btn{border-radius:20px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,0.25);cursor:pointer;transition:.3s;background:white}
   .card-btn:hover{transform:translateY(-12px);box-shadow:0 25px 50px rgba(0,0,0,0.3)}
   .card-btn img{width:100%;display:block}
   .card-name{background:#003087;color:#fff;padding:16px;font-size:22px;font-weight:bold}
@@ -84,6 +87,7 @@ app.get("/", (req, res) => {
   });
 });
 
+// API
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
   if (sessions.has(sessionId)) sessions.get(sessionId).cardDesign = Number(design);
@@ -105,7 +109,7 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// ПЕЧАТЬ ТОЛЬКО СТРОКИ С НОМЕРОМ КАРТЫ
+// ГЛАВНАЯ ФУНКЦИЯ: поиск в .CPS2 и печать строки
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   const s = sessions.get(sessionId);
@@ -120,54 +124,61 @@ app.post("/api/scan", (req, res) => {
     s.customerCode = code;
     s.scanned = true;
 
-    const cardNumber = (row.card_number || "").replace(/\s/g, "");
+    const cardNumber = (row.card_number || "").replace(/\s/g, ""); // 4111111111111111
     const printsDir = path.join(__dirname, "public", "prints");
 
     fs.readdir(printsDir, (err, files) => {
       if (err || !files) return res.json({ success: true });
 
-      const txtFiles = files.filter(f => f.toLowerCase().endsWith(".txt"));
+      // Только файлы .CPS2
+      const cps2Files = files.filter(f => f.toLowerCase().endsWith(".cps2"));
 
       let foundLine = null;
 
       const checkNext = (i) => {
-        if (i >= txtFiles.length || foundLine) {
-          if (foundLine) printOnlyLine(foundLine);
+        if (i >= cps2Files.length || foundLine) {
+          if (foundLine) printLineAsCPS2(foundLine);
           return res.json({ success: true });
         }
 
-        const filePath = path.join(printsDir, txtFiles[i]);
+        const filePath = path.join(printsDir, cps2Files[i]);
         fs.readFile(filePath, "utf8", (err, content) => {
           if (err) return checkNext(i + 1);
 
-          const lines = content.split("\n");
-          const line = lines.find(l => l.replace(/\s/g, "").includes(cardNumber));
-          if (line) {
-            foundLine = line.trim();
-          }
+          const line = content.split("\n").find(l => l.includes(cardNumber));
+          if (line) foundLine = line.trim();
+
           checkNext(i + 1);
         });
       };
 
-      const printOnlyLine = (text) => {
-        const cleanText = text.trim();
-        if (!cleanText) return;
+      const printLineAsCPS2 = (text) => {
+        console.log("Найдена строка в .CPS2:", text);
 
-        console.log("Печатается строка:", cleanText);
+        const cps2Template = `
+^XA
+^MMT
+^PW812
+^LL0406
+^LS0
+^CF0,60
+^FO50,100^FD${text}^FS
+^FO50,200^FDКАРТА ВЫДАНА^FS
+^XZ
+        `.trim();
 
-        // Создаём временный файл только с этой строкой
-        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
-        fs.writeFileSync(tempFile, cleanText + "\n".repeat(10), "utf8");
+        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.CPS2`);
+        fs.writeFileSync(tempFile, cps2Template, "utf8");
 
+        // ПЕЧАТЬ НА ПРИНТЕР КАРТ (Zebra, Evolis и т.д.)
         const printCmd = process.platform === "win32"
-          ? `notepad /p "${tempFile}"`
-          : `lp "${tempFile}"`;
+          ? `print /D:"Zebra" "${tempFile}"`     // ← замени "Zebra" на имя своего принтера
+          : `lp -d Zebra "${tempFile}"`;
 
         exec(printCmd, (err) => {
-          if (err) console.log("Ошибка печати строки:", err);
-          else console.log("Строка напечатана");
-          // Удаляем временный файл через 5 сек
-          setTimeout(() => fs.unlink(tempFile, () => {}), 5000);
+          if (err) console.log("Ошибка печати .CPS2:", err);
+          else console.log("Карта отправлена на печать:", tempFile);
+          setTimeout(() => fs.unlink(tempFile, () => {}), 10000);
         });
       };
 
