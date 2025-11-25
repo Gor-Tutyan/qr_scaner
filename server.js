@@ -42,9 +42,12 @@ app.get("/", (req, res) => {
     cardDesign: null 
   });
 
-  // Генерируем QR на сервере
+  // Генерируем QR-код на сервере
   QRCode.toDataURL(JSON.stringify({ sessionId }), { width: 500, margin: 2 }, (err, qrUrl) => {
-    if (err) return res.status(500).send("Ошибка генерации QR");
+    if (err) {
+      console.error("Ошибка генерации QR:", err);
+      return res.status(500).send("Ошибка генерации QR");
+    }
 
     res.send(`
 <!DOCTYPE html>
@@ -55,7 +58,7 @@ app.get("/", (req, res) => {
   <title>Касса — выбор карты</title>
   <style>
     body{font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:20px;text-align:center}
-    h1{margin:30px 0 40px;font-size:28px}
+    h1{margin:30px 0 40px;font-size:28px;color:#333}
     .designs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:25px;max-width:1100px;margin:0 auto}
     .card-btn{border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.2);cursor:pointer;transition:0.3s;background:white}
     .card-btn:hover{transform:translateY(-10px);box-shadow:0 20px 40px rgba(0,0,0,0.3)}
@@ -87,8 +90,8 @@ app.get("/", (req, res) => {
   <div id="qr-area">
     <h2>Покажите клиенту этот QR-код</h2>
     <div id="qr-img"><img src="${qrUrl}" style="width:100%;max-width:400px"></div>
-    <p style="margin:20px 0"><strong>Выбран дизайн:</strong> <span id="sel">—</span></p>
-    <div id="status">Ожидаем сканирование и ввод кода...</div>
+    <p style="margin:20px 0;font-size:20px"><strong>Выбран дизайн:</strong> <span id="sel">—</span></p>
+    <div id="status">Ожидаем сканирование и ввод кода клиента...</div>
     <button onclick="location.reload()">Новый клиент</button>
   </div>
 
@@ -96,15 +99,19 @@ app.get("/", (req, res) => {
     const sid = "${sessionId}";
 
     function choose(design) {
+      // Сохраняем выбранный дизайн
       fetch("/api/set-design", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({sessionId: sid, design})
       });
 
+      // Показываем QR и статус
       document.querySelector(".designs").style.display = "none";
       document.getElementById("qr-area").style.display = "block";
       document.getElementById("sel").textContent = design;
+
+      // Запускаем опрос статуса
       startPolling();
     }
 
@@ -117,7 +124,7 @@ app.get("/", (req, res) => {
               clearInterval(interval);
               document.getElementById("status").innerHTML = 
                 '<div class="result-card">' +
-                  '<img src="/cards/card' + (data.design || 1) + '.jpg" alt="Карта">' +
+                  '<img src="/cards/card' + (data.design || 1) + '.jpg" alt="Карта клиента">' +
                   '<div class="info">' +
                     '<div class="name">' + data.first_name + ' ' + data.last_name + '</div>' +
                     '<div class="number">' + 
@@ -127,7 +134,7 @@ app.get("/", (req, res) => {
                 '</div>';
             }
           })
-          .catch(() => {});
+          .catch(err => console.log("Ошибка опроса:", err));
       }, 2000);
     }
   </script>
