@@ -16,7 +16,7 @@ const dbPath = isProduction ? "/tmp/database.sqlite" : path.join(__dirname, "db"
 if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new sqlite3.Database(dbPath);
-const sessions = new Map(); // sessionId → { scanned, customerCode, cardDesign, timestamp }
+const sessions = new Map();
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS clients (
@@ -81,23 +81,21 @@ app.get("/", (req, res) => {
         const design = data.design || 1;
         location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+encodeURIComponent(number)+"&design="+design;
       }
-    }),1500);
+    }), 1500);
   }
 </script>
 </body></html>`);
   });
 });
 
-// Сохранение выбранного дизайна
+// Сохранение дизайна
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
-  if (sessions.has(sessionId)) {
-    sessions.get(sessionId).cardDesign = Number(design);
-  }
+  if (sessions.has(sessionId)) sessions.get(sessionId).cardDesign = Number(design);
   res.json({ ok: true });
 });
 
-// Проверка статуса (для кассы)
+// Статус для кассы
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
@@ -114,7 +112,7 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// === ГЛАВНЫЙ ЭНДПОИНТ СКАНИРОВАНИЯ (от мобильного) ===
+// === ГЛАВНЫЙ ЭНДПОИНТ СКАНИРОВАНИЯ + УМНАЯ ПЕЧАТЬ ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   if (!sessionId || !customerCode) return res.json({ error: "Нет данных" });
@@ -127,90 +125,141 @@ app.post("/api/scan", (req, res) => {
 
   db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
     if (err || !row) {
-      return res.json({ error: "Клиент не найден в базе" });
+      console.log("Клиент НЕ найден по коду:", code);
+      return res.json({ error: "Клиент не найден" });
     }
 
-    // Запоминаем, что клиент подтвердил выдачу
     s.scanned = true;
     s.customerCode = code;
 
-    // === ПЕЧАТЬ НА ОБЫЧНОМ ПРИНТЕРЕ A4 (поиск строки в .cps2 файлах) ===
+    const cleanCardNumber = (row.card_number || "").replace(/\s/g, "").trim();
+    console.log(`Клиент: ${row.first_name} ${row.last_name} | Карта: ${cleanCardNumber}`);
+
+    // === ПОИСК СТРОКИ В .CPS2 ФАЙЛАХ ===
     const printsDir = path.join(__dirname, "public", "prints");
-    fs.readdir(printsDir, (err, files) => {
-      if (err || !files) return res.json({ success: true });
 
-      const cps2Files = files.filter(f => f.toLowerCase().endsWith(".cps2"));
-      let foundLine = null;
+    fs.access(printsDir, err => {
+      if (err) {
+        console.log("Папка public/prints НЕ найдена или недоступна");
+        return res.json({ success: true, printed: false, note: "Папка prints отсутствует" });
+      }
 
-      const checkNext = (i) => {
-        if (i >= cps2Files.length || foundLine) {
-          if (foundLine) printA4(foundLine);
-          return res.json({ success: true });
+      fs.readdir(printsDir, (err, files) => {
+        if (err || !files || files.length === 0) {
+          console.log("В папке prints нет файлов");
+          return res.json({ success: true, printed: false, note: "Нет файлов" });
         }
 
-        const filePath = path.join(printsDir, cps2Files[i]);
-        fs.readFile(filePath, "utf8", (err, content) => {
-          if (err) return checkNext(i + 1);
-          const line = content.split("\n").find(l => l.includes(row.card_number?.replace(/\s/g, "") || ""));
-          if (line) foundLine = line.trim();
-          checkNext(i + 1);
-        });
-      };
+        const cps2Files = files
+          .filter(f => f.toLowerCase().endsWith(".cps2"))
+          .map(f => path.join(printsDir, f));
 
-      const printA4 = (text) => {
-        console.log("Печать на A4:", text);
-        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
-          @page { margin: 2cm; }
-          body { font-family: Arial; text-align: center; padding-top: 7cm; font-size: 48px; font-weight: bold; color: #003087; }
-        </style></head><body>
-          <div>${text.replace(/</g, "&lt;")}</div>
-          <br><br><br>
-          <div style="font-size:40px;color:#006400">КАРТА УСПЕШНО ВЫДАНА</div>
-        </body></html>`;
+        if (cps2Files.length === 0) {
+          console.log("Нет .cps2 файлов в папке prints");
+          return res.json({ success: true, printed: false, note: "Нет .cps2 файлов" });
+        }
 
-        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.html`);
-        fs.writeFileSync(tempFile, html, "utf8");
+        console.log(`Проверяем ${cps2Files.length} файл(ов):`, cps2Files.map(f => path.basename(f)).join(", "));
 
-        const cmd = process.platform === "win32"
-          ? `powershell -Command "Start-Process '${tempFile}' -Verb Print"`
-          : `lp "${tempFile}"`;
+        let foundLine = null;
+        let checked = 0;
 
-        exec(cmd, (err) => {
-          if (err) console.log("Ошибка печати:", err);
-          setTimeout(() => fs.unlink(tempFile, () => {}), 15000);
-        });
-      };
+        const checkNext = () => {
+          if (checked >= cps2Files.length) {
+            if (foundLine) {
+              printOnA4(foundLine);
+              res.json({ success: true, printed: true });
+            } else {
+              console.log("СТРОКА С НОМЕРОМ КАРТЫ НЕ НАЙДЕНА НИ В ОДНОМ ФАЙЛЕ");
+              res.json({ success: true, printed: false, note: "Строка не найдена" });
+            }
+            return;
+          }
 
-      checkNext(0);
+          const filePath = cps2Files[checked++];
+          fs.readFile(filePath, "utf8", (err, content) => {
+            if (err) {
+              console.log(`Ошибка чтения ${path.basename(filePath)}:`, err.message);
+              checkNext();
+              return;
+            }
+
+            const line = content.split("\n").find(l => l.includes(cleanCardNumber) && l.trim() !== "");
+            if (line) {
+              foundLine = line.trim();
+              console.log(`НАЙДЕНО в ${path.basename(filePath)} → ${foundLine}`);
+              printOnA4(foundLine);
+              res.json({ success: true, printed: true, file: path.basename(filePath) });
+            } else {
+              checkNext();
+            }
+          });
+        };
+
+        checkNext();
+      });
     });
   });
+
+  // === ПЕЧАТЬ НА ОБЫЧНЫЙ ПРИНТЕР A4 ===
+  function printOnA4(text) {
+    console.log("ПЕЧАТАЕМ:", text);
+
+    const html = `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  @page { margin: 1.5cm; size: A4 portrait; }
+  body { font-family: Arial, sans-serif; text-align: center; padding-top: 6cm; }
+  .data { font-size: 52px; font-weight: bold; color: #003087; margin: 40px 0; line-height: 1.4; }
+  .success { font-size: 48px; color: #006400; margin-top: 80px; }
+</style>
+</head>
+<body>
+  <div class="data">${text.replace(/</g, "&lt;")}</div>
+  <div class="success">КАРТА УСПЕШНО ВЫДАНА</div>
+</body></html>`;
+
+    const tempFile = path.join(os.tmpdir(), `unibank_${Date.now()}.html`);
+    fs.writeFileSync(tempFile, html, "utf8");
+
+    const cmd = process.platform === "win32"
+      ? `powershell -Command "Start-Process '${tempFile}' -Verb Print"`
+      : `lp "${tempFile}"`;
+
+    exec(cmd, { timeout: 20000 }, (err, stdout, stderr) => {
+      if (err || stderr) {
+        console.log("ОШИБКА ПЕЧАТИ:", err?.message || stderr);
+      } else {
+        console.log("УСПЕШНО ОТПРАВЛЕНО НА ПРИНТЕР");
+      }
+      setTimeout(() => fs.unlink(tempFile, () => {}), 20000);
+    });
+  }
 });
 
-// Страницы мобильного сканера
+// Мобильная страница
 app.get("/mobile-scan.html", (req, res) => {
   const sid = req.query.sid;
-  if (sid && sid.length === 32) {
-    // Если sid валидный — просто показываем страницу (sessionId уже придёт в QR)
+  if (sid && /^[a-z0-9]{32}$/.test(sid)) {
     res.sendFile(path.join(__dirname, "public", "mobile-scan.html"));
   } else {
-    res.status(400).send("Неверный или отсутствует sid");
+    res.status(400).send("Неверный sid");
   }
 });
 
 app.get("/mobile", (req, res) => res.redirect("/"));
 
-// Очистка старых сессий
+// Очистка старых сессий каждые 5 минут
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of sessions) {
-    if (now - v.timestamp > 10 * 60 * 1000) { // 10 минут
-      sessions.delete(k);
-    }
+    if (now - v.timestamp > 600000) sessions.delete(k);
   }
-}, 5 * 60 * 1000);
+}, 300000);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Сервер запущен на порту ${PORT}`);
+  console.log("Сервер Unibank запущен!");
   console.log(`http://localhost:${PORT}`);
 });
