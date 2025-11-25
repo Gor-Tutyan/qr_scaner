@@ -2,15 +2,93 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Сканер</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Unibank — Подтверждение</title>
   <style>
-    body,html{margin:0;padding:0;height:100%;background:#000;color:#fff;overflow:hidden;text-align:center}
-    #start{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;background:#111}
-    button{background:#34A853;color:#fff;border:none;padding:25px 60px;font-size:30px;border-radius:25px;cursor:pointer}
-    #video{display:none;width:100vw;height:100vh;object-fit:cover}
-    .frame{position:fixed;top:50%;left:50%;width:320px;height:320px;transform:translate(-50%,-50%);border:6px solid #4CAF50;border-radius:25px;pointer-events:none;z-index:10}
-    #input{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);width:90%;background:rgba(0,0,0,0.9);padding:25px;border-radius:25px;display:none}
-    input,button{width:100%;padding:20px;font-size:26px;margin:12px 0;border:none;border-radius:18px}
-    input{background:#fff;color:#000}
-    button{background:#34A853;color:#fff;font-weight:bold}
+    body{margin:0;padding:20px;background:#003087;color:#fff;font-family:Arial;text-align:center;height:100vh;display:flex;flex-direction:column;justify-content:flex-start;align-items:center}
+    h1{font-size:28px;margin:30px 0 10px}
+    p{font-size:18px;opacity:0.9}
+    .scanner{width:300px;height:300px;border:4px dashed #fff;border-radius:20px;margin:20px auto;background:rgba(255,255,255,0.1)}
+    input{font-size:28px;padding:16px;width:90%;max-width:400px;border:none;border-radius:15px;text-align:center;margin:15px 0}
+    button{background:#00c853;color:white;border:none;padding:18px;font-size:22px;border-radius:50px;width:90%;max-width:400px;margin:10px 0;cursor:pointer}
+    .or{margin:20px 0;font-size:18px;opacity:0.8}
+  </style>
+</head>
+<body>
+
+  <h1>Unibank</h1>
+  <p>Отсканируйте или введите код клиента</p>
+
+  <div class="scanner" id="reader"></div>
+
+  <div class="or">— ИЛИ —</div>
+
+  <input type="text" id="manualCode" placeholder="Введите код вручную" autofocus>
+  <button onclick="sendCode()">ПОДТВЕРДИТЬ</button>
+
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script>
+    // ЭТА СТРОКА ОБЯЗАТЕЛЬНО ДОЛЖНА БЫТЬ ИМЕННО ТАКОЙ — сервер её заменит!
+    const sessionId = window.SESSION_ID || null;
+
+    if (!sessionId) {
+      document.body.innerHTML = `<h2 style="margin-top:100px">Загрузка...</h2>`;
+      setTimeout(() => location.reload(), 2000);
+      throw new Error("sessionId not injected");
+    }
+
+    function sendToServer(code) {
+      if (!code || code.length < 4) return alert("Код слишком короткий");
+
+      fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, customerCode: code })
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          document.body.innerHTML = `
+            <h1 style="margin-top:100px">ГОТОВО!</h1>
+            <p style="font-size:26px">Карта успешно выдана</p>
+            <button onclick="location.href='/'" style="margin-top:40px;padding:16px 32px;font-size:20px;background:#006400;border:none;border-radius:50px;color:#fff;cursor:pointer">
+              Новый клиент
+            </button>`;
+        } else {
+          alert("Ошибка: " + (res.error || "Код не найден"));
+        }
+      })
+      .catch(() => alert("Нет связи с сервером"));
+    }
+
+    function startScanner() {
+      const scanner = new Html5Qrcode("reader");
+      scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (text) => {
+          const code = text.replace(/\D/g, '');
+          if (code.length >= 4) {
+            sendToServer(code);
+            scanner.stop();
+          }
+        },
+        () => {}
+      ).catch(() => console.log("Камера недоступна"));
+    }
+
+    window.sendCode = function() {
+      const code = document.getElementById("manualCode").value.replace(/\D/g, "");
+      sendToServer(code);
+    };
+
+    if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      setTimeout(startScanner, 800);
+    }
+
+    document.getElementById("manualCode").addEventListener("keyup", e => {
+      if (e.key === "Enter") sendCode();
+    });
+  </script>
+</body>
+</html>
