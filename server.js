@@ -9,6 +9,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
+// Путь к базе (на Render — в /tmp, локально — в db/)
 const isProduction = process.env.RENDER || process.env.NODE_ENV === "production";
 const dbPath = isProduction ? "/tmp/database.sqlite" : path.join(__dirname, "db", "database.sqlite");
 if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -16,11 +17,10 @@ if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new sqlite3.Database(dbPath);
 const sessions = new Map();
 
-// ПУТЬ К ФАЙЛУ В GIT — ВСЕГДА ВИДЕН В РЕПОЗИТОРИИ
+// ФАЙЛ БУДЕТ ЗДЕСЬ → ВИДЕН В GIT НАВСЕГДА
 const RESULT_FILE = path.join(__dirname, "public", "prints", "PrintResult.CPS2");
 
-// Создаём папку и файл при старте
-fs.mkdirSync(path.dirname(RESULT_FILE), { recursive: true });
+// Создаём файл при старте, если его нет
 if (!fs.existsSync(RESULT_FILE)) {
   fs.writeFileSync(RESULT_FILE, "", "utf8");
   console.log("Создан: public/prints/PrintResult.CPS2");
@@ -81,12 +81,12 @@ app.get("/", (req, res) => {
     document.querySelector(".designs").style.display="none";
     document.getElementById("qr-area").style.display="block";
     document.getElementById("sel").textContent = d;
-    const timer = setInterval(()=> {
+    const timer = setInterval(()=>{
       fetch("/api/status/"+sid).then(r=>r.json()).then(data=>{
         if(data.success){
           clearInterval(timer);
           const name = (data.first_name + " " + data.last_name).toUpperCase();
-          const number = data.card_number || "4111111111111111111";
+          const number = data.card_number || "4111111111111111";
           const design = data.design || 1;
           location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+number+"&design="+design;
         }
@@ -113,14 +113,14 @@ app.get("/api/status/:id", (req, res) => {
     res.json({
       success: true,
       first_name: row.first_name || "ԱՆՈՒՆ",
-      last_name: row.last_name || "ԱԶԳԱՆՈ",
+      last_name: row.last_name || "ԱԶԳԱՆՈՒՆ",
       card_number: row.card_number || "4111111111111111",
       design: s.cardDesign || 1
     });
   });
 });
 
-// ГЛАВНОЕ: ЗАПИСЬ В GIT + ОРИГИНАЛЬНАЯ СТРОКА
+// ГЛАВНОЕ: ЗАПИСЬ В GIT (public/prints/PrintResult.CPS2)
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   if (!sessionId || !customerCode) return res.json({ error: "Нет данных" });
@@ -132,63 +132,54 @@ app.post("/api/scan", (req, res) => {
   if (code.length < 4) return res.json({ error: "Կոդը շատ կարճ է" });
 
   db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
-    if (err || !row) {
-      console.log("Клиент не найден:", code);
-      return res.json({ error: "Հաճախորդը չի գտնվել" });
-    }
+    if (err || !row) return res.json({ error: "Հաճախորդը չի գտնվել" });
 
     session.scanned = true;
     session.customerCode = code;
 
     const cardNumber = (row.card_number || "").replace(/\s/g, "").trim();
+    let line = null;
 
-    let lineToWrite = null;
-
-    // Ищем оригинальную строку в .cps2 файлах
+    // Поиск оригинальной строки в твоих .cps2 файлах
     const printsDir = path.join(__dirname, "public", "prints");
     try {
       const files = fs.readdirSync(printsDir);
       for (const file of files) {
         if (!file.toLowerCase().endsWith(".cps2")) continue;
         const content = fs.readFileSync(path.join(printsDir, file), "utf8");
-        const foundLine = content.split("\n").find(l => l.includes(cardNumber) && l.trim() !== "");
-        if (foundLine) {
-          lineToWrite = foundLine.trim();
-          console.log(`Найдена оригинальная строка в ${file}: ${lineToWrite}`);
+        const found = content.split("\n").find(l => l.includes(card) && l.trim());
+        if (found) {
+          line = found.trim();
+          console.log(`Найдена строка в ${file}: ${line}`);
           break;
         }
       }
     } catch (e) {
-      console.log("Папка prints недоступна или пуста");
+      console.log("Папка prints не найдена");
     }
 
-    // Если не нашли — создаём красивую строку
-    if (!lineToWrite) {
+    // Если не нашли — создаём свою
+    if (!line) {
       const name = `${row.first_name || "ԱՆՈՒՆ"} ${row.last_name || "ԱԶԳԱՆՈՒՆ"}`.trim();
-      const date = new Date().toISOString().slice(0,19).replace("T", " ");
-      lineToWrite = `${cardNumber}\t${name}\t${date}\tISSUED`;
+      const now = new Date().toISOString().slice(0,19).replace("T", " ");
+      line = `${card}\t${name}\t${now}\tISSUED`;
     }
 
-    // ЗАПИСЫВАЕМ ПРЯМО В GIT
-    fs.appendFile(RESULT_FILE, lineToWrite + "\n", "utf8", (err) => {
+    // ЗАПИСЬ ПРЯМО В GIT
+    fs.appendFile(RESULT_FILE, line + "\n", "utf8", (err) => {
       if (err) {
-        console.error("Ошибка записи в Git:", err.message);
+        console.error("Ошибка записи файла:", err);
         return res.json({ success: true, saved: false });
       }
-
       console.log("УСПЕШНО! Добавлено в Git → public/prints/PrintResult.CPS2");
-      console.log("→", lineToWrite);
+      console.log("→", line);
 
-      res.json({
-        success: true,
-        saved: true,
-        line: lineToWrite,
-        file: "prints/PrintResult.CPS2"
-      });
+      res.json({ success: true, saved: true, line: line });
     });
   });
 });
 
+// Мобильные страницы
 app.get("/mobile-scan.html", (req, res) => {
   const sid = req.query.sid;
   if (sid && /^[a-z0-9]{32}$/.test(sid)) {
@@ -200,7 +191,7 @@ app.get("/mobile-scan.html", (req, res) => {
 
 app.get("/mobile", (req, res) => res.redirect("/"));
 
-// Доступ к файлу через браузер
+// Прямая ссылка для теста и принтера
 app.get("/PrintResult.CPS2", (req, res) => {
   res.type("text/plain; charset=utf-8");
   res.sendFile(RESULT_FILE);
