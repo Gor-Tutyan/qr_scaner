@@ -32,7 +32,7 @@ app.get("/", (req, res) => {
   QRCode.toDataURL(JSON.stringify({ sessionId }), { width: 500, margin: 2 }, (err, qrUrl) => {
     if (err) return res.status(500).send("QR Error");
 
-    const html = `<!DOCTYPE html>
+    res.send(`<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
@@ -55,10 +55,10 @@ app.get("/", (req, res) => {
 
   <h1>Выберите дизайн карты клиента</h1>
   <div class="designs">
-    <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.png"><div class="card-name">Дизайн 1</div></div>
-    <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.png"><div class="card-name">Дизайн 2</div></div>
-    <div class="card-btn" onclick="choose(3)"><img src="/cards/card3.png"><div class="card-name">Дизайн 3</div></div>
-    <div class="card-btn" onclick="choose(4)"><img src="/cards/card4.png"><div class="card-name">Дизайн 4</div></div>
+    <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.png" alt="1"><div class="card-name">Дизайн 1</div></div>
+    <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.png" alt="2"><div class="card-name">Дизайн 2</div></div>
+    <div class="card-btn" onclick="choose(3)"><img src="/cards/card3.png" alt="3"><div class="card-name">Дизайн 3</div></div>
+    <div class="card-btn" onclick="choose(4)"><img src="/cards/card4.png" alt="4"><div class="card-name">Дизайн 4</div></div>
   </div>
 
   <div id="qr-area">
@@ -75,8 +75,8 @@ app.get("/", (req, res) => {
     function choose(design) {
       fetch("/api/set-design", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sid, design: design })
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({sessionId: sid, design: design})
       });
       document.querySelector(".designs").style.display = "none";
       document.getElementById("qr-area").style.display = "block";
@@ -86,7 +86,7 @@ app.get("/", (req, res) => {
 
     function startPolling() {
       const interval = setInterval(() => {
-        fetch("/api/status/" + sid)
+        fetch("/api/status/"+sid)
           .then(r => r.json())
           .then(data => {
             if (data.success) {
@@ -96,36 +96,42 @@ app.get("/", (req, res) => {
               const name = (data.first_name + " " + data.last_name).toUpperCase();
               const design = data.design || 1;
 
-              // ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-              // КРАСИВАЯ КАРТА С ПРАВИЛЬНЫМИ ПРОПОРЦИЯМИ
               document.getElementById("status").innerHTML = 
-                "<div style='margin:40px auto;max-width:680px;padding:20px;background:linear-gradient(135deg,#f8f9fa,#e3f2fd);border-radius:30px;box-shadow:0 30px 80px rgba(0,0,0,0.4)'>" +
-                  "<div style='position:relative;width:100%;padding-bottom:63.5%;border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.5),inset 0 0 30px rgba(255,255,255,0.2)'>" +
-                    "<canvas id='finalCard' style='position:absolute;top:0;left:0;width:100%;height:100%'></canvas>" +
-                    "<div style='position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#0f0;padding:12px 35px;border-radius:50px;font-weight:bold;font-size:19px;letter-spacing:3px;box-shadow:0 5px 25px rgba(0,255,0,0.4)'>КАРТА ВЫДАНА</div>" +
-                  "</div>" +
-                  "<div style='margin-top:30px;text-align:center;color:#003087;font-size:26px;font-weight:bold'>" + name + "<br><span style=\"font-family:'Courier New',monospace;letter-spacing:5px;color:#000;font-size:24px\">" + number + "</span></div>" +
-                "</div>" +
+                '<div style="margin:40px auto;max-width:680px;padding:20px;background:linear-gradient(135deg,#f8f9fa,#e3f2fd);border-radius:30px;box-shadow:0 30px 80px rgba(0,0,0,0.4)">' +
+                  '<div style="position:relative;width:100%;padding-bottom:63.5%;border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.5),inset 0 0 30px rgba(255,255,255,0.2)">' +
+                    '<canvas id="finalCard" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas>' +
+                    '<div style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#0f0;padding:12px 35px;border-radius:50px;font-weight:bold;font-size:19px;letter-spacing:3px;box-shadow:0 5px 25px rgba(0,255,0,0.4)">КАРТА ВЫДАНА</div>' +
+                  '</div>' +
+                  '<div style="margin-top:30px;text-align:center;color:#003087;font-size:26px;font-weight:bold">' + name + '<br><span style="font-family:\'Courier New\',monospace;letter-spacing:5px;color:#000;font-size:24px">' + number + '</span></div>' +
+                '</div>';
 
-                "<script>" +
-                  "const canvas = document.getElementById('finalCard');" +
-                  "const ctx = canvas.getContext('2d');" +
-                  "const img = new Image();" +
-                  "img.onload = function() {" +
-                    "ctx.drawImage(img, 0, 0, canvas.width, canvas.height);" +
-                    "ctx.fillStyle = 'rgba(0,0,0,0.65)';" +
-                    "ctx.fillRect(0, canvas.height - 150, canvas.width, 150);" +
-                    "ctx.font = 'bold 54px Arial';" +
-                    "ctx.strokeStyle = '#000'; ctx.lineWidth = 9; ctx.fillStyle = '#fff'; ctx.textAlign = 'left';" +
-                    "ctx.strokeText('" + name + "', 70, canvas.height - 55);" +
-                    "ctx.fillText('" + name + "', 70, canvas.height - 55);" +
-                    "ctx.font = \"bold 58px 'Courier New', monospace\";" +
-                    "ctx.textAlign = 'center';" +
-                    "ctx.strokeText('" + number + "', canvas.width/2, canvas.height - 15);" +
-                    "ctx.fillText('" + number + "', canvas.width/2, canvas.height - 15);" +
-                  "};" +
-                  "img.src = '/cards/card" + design + ".png?t=" + Date.now() + "';" +
-                "<\/script>";
+              // Рисуем карту
+              const canvas = document.getElementById("finalCard");
+              const ctx = canvas.getContext("2d");
+              const img = new Image();
+              img.onload = function() {
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                // Тёмная полоса снизу
+                ctx.fillStyle = "rgba(0,0,0,0.65)";
+                ctx.fillRect(0, canvas.height - 150, canvas.width, 150);
+
+                // Имя
+                ctx.font = "bold 54px Arial";
+                ctx.strokeStyle = "#000";
+                ctx.lineWidth = 9;
+                ctx.fillStyle = "#fff";
+                ctx.textAlign = "left";
+                ctx.strokeText(name, 70, canvas.height - 55);
+                ctx.fillText(name, 70, canvas.height - 55);
+
+                // Номер
+                ctx.font = "bold 58px 'Courier New', monospace";
+                ctx.textAlign = "center";
+                ctx.strokeText(number, canvas.width/2, canvas.height - 15);
+                ctx.fillText(number, canvas.width/2, canvas.height - 15);
+              };
+              img.src = "/cards/card" + design + ".png?t=" + Date.now();
             }
           })
           .catch(() => {});
@@ -133,9 +139,7 @@ app.get("/", (req, res) => {
     }
   </script>
 </body>
-</html>`;
-
-    res.send(html);
+</html>`);
   });
 });
 
