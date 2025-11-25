@@ -16,7 +16,7 @@ const dbPath = isProduction ? "/tmp/database.sqlite" : path.join(__dirname, "db"
 if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new sqlite3.Database(dbPath);
-const sessions = new Map();
+const sessions = new Map(); // sessionId → { scanned, customerCode, timestamp, cardDesign }
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS clients (
@@ -27,6 +27,7 @@ db.serialize(() => {
   )`);
 });
 
+// === ГЛАВНАЯ СТРАНИЦА С QR-КОДОМ ===
 app.get("/", (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
   sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
@@ -87,15 +88,20 @@ app.get("/", (req, res) => {
   });
 });
 
+// === ВЫБОР ДИЗАЙНА ===
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
-  if (sessions.has(sessionId)) sessions.get(sessionId).cardDesign = Number(design);
+  if (sessions.has(sessionId)) {
+    sessions.get(sessionId).cardDesign = Number(design);
+  }
   res.json({ok:true});
 });
 
+// === СТАТУС ДЛЯ ОПРОСА ===
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s || !s.scanned || !s.customerCode) return res.json({pending:true});
+
   db.get("SELECT * FROM clients WHERE client_code=?", [s.customerCode], (err, row) => {
     if (!row) return res.json({error:"Не найден"});
     res.json({
@@ -108,7 +114,7 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// ПЕЧАТЬ НА ОБЫЧНОМ ПРИНТЕРЕ A4 — ТОЛЬКО НАЙДЕННАЯ СТРОКА
+// === СКАНИРОВАНИЕ / ВВОД КОДА КЛИЕНТА ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   const s = sessions.get(sessionId);
@@ -123,62 +129,59 @@ app.post("/api/scan", (req, res) => {
     s.customerCode = code;
     s.scanned = true;
 
+    // === ПЕЧАТЬ НА ОБЫЧНОМ A4 ПРИНТЕРЕ (ищем номер карты в .cps2 файлах) ===
     const cardNumber = (row.card_number || "").replace(/\s/g, "");
     const printsDir = path.join(__dirname, "public", "prints");
 
     fs.readdir(printsDir, (err, files) => {
-      if (err || !files) return res.json({ success: true });
+      if (err || !files || !files.length) return res.json({ success: true });
 
       const cps2Files = files.filter(f => f.toLowerCase().endsWith(".cps2"));
-
       let foundLine = null;
 
       const checkNext = (i) => {
         if (i >= cps2Files.length || foundLine) {
-          if (foundLine) printOnPaperA4(foundLine);
+          if (foundLine) printOnA4(foundLine);
           return res.json({ success: true });
         }
 
         const filePath = path.join(printsDir, cps2Files[i]);
         fs.readFile(filePath, "utf8", (err, content) => {
           if (err) return checkNext(i + 1);
-
           const line = content.split("\n").find(l => l.includes(cardNumber));
           if (line) foundLine = line.trim();
-
           checkNext(i + 1);
         });
       };
 
-      const printOnPaperA4 = (text) => {
-        console.log("Печать на обычном принтере:", text);
+      const printOnA4 = (text) => {
+        console.log("ПЕЧАТЬ НА A4:", text);
 
         const html = `
 <!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <style>
   @page { margin: 2cm; }
-  body { font-family: Arial; text-align: center; padding-top: 6cm; font-size: 48px; font-weight: bold; color: #003087; }
+  body { font-family: Arial, sans-serif; text-align: center; padding-top: 8cm; font-size: 48px; font-weight: bold; color: #003087; }
 </style>
 </head>
 <body>
   <div>${text.replace(/</g, "&lt;")}</div>
-  <br><br><br>
-  <div style="font-size:36px;color:#006400">КАРТА УСПЕШНО ВЫДАНА</div>
+  <br><br><br><br>
+  <div style="font-size:42px;color:#006400">КАРТА УСПЕШНО ВЫДАНА</div>
 </body></html>`;
 
-        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.html`);
+        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}_${crypto.randomUUID().slice(0,8)}.html`);
         fs.writeFileSync(tempFile, html, "utf8");
 
-        // ПЕЧАТЬ НА ОБЫЧНЫЙ ПРИНТЕР (A4)
         const printCmd = process.platform === "win32"
-          ? `start /min powershell -Command "Start-Process '${tempFile}' -Verb Print"`
+          ? `powershell -Command "Start-Process '${tempFile}' -Verb Print"`
           : `lp "${tempFile}"`;
 
         exec(printCmd, (err) => {
-          if (err) console.log("Ошибка печати:", err);
-          else console.log("Напечатано на офисном принтере");
-          setTimeout(() => fs.unlink(tempFile, () => {}), 10000);
+          if (err) console.error("Ошибка печати:", err);
+          else console.log("Успешно отправлено на принтер");
+          setTimeout(() => fs.unlink(tempFile, () => {}), 15000);
         });
       };
 
@@ -187,13 +190,46 @@ app.post("/api/scan", (req, res) => {
   });
 });
 
-app.get("/mobile", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile.html")));
-app.get("/mobile-scan", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile-scan.html")));
+// === ВАЖНО: Динамическая отдача mobile-scan.html (чтобы sid всегда был актуальным) ===
+app.get("/mobile-scan.html", (req, res) => {
+  const sid = req.query.sid;
 
+  if (!sid || !sessions.has(sid)) {
+    return res.status(400).send(`
+      <h2 style="text-align:center;margin-top:20vh;color:#fff;background:#003087;height:100vh;padding-top:20vh;font-family:Arial,sans-serif">
+        Ссылка устарела или повреждена<br><br>
+        <button onclick="location.reload()" style="padding:15px 30px;font-size:18px;border:none;border-radius:10px;cursor:pointer">
+          Попробовать снова
+        </button>
+      </h2>`);
+  }
+
+  let html = fs.readFileSync(path.join(__dirname, "public", "mobile-scan.html"), "utf8");
+
+  // Жёстко вшиваем правильный sid (чтобы не зависеть от query-параметра)
+  html = html.replace(
+    /const sessionId = urlParams\.get\('sid'\);/,
+    `const sessionId = "${sid}";`
+  );
+
+  res.type("html").send(html);
+});
+
+// Простая заглушка для /mobile (если кто-то зайдёт напрямую)
+app.get("/mobile", (req, res) => res.redirect("/"));
+
+// === Очистка старых сессий ===
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of sessions) if (now - v.timestamp > 600000) sessions.delete(k);
-}, 300000);
+  for (const [k, v] of sessions) {
+    if (now - v.timestamp > 10 * 60 * 1000) { // 10 минут
+      sessions.delete(k);
+    }
+  }
+}, 5 * 60 * 1000);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => console.log(`Сервер запущен: http://localhost:${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Сервер запущен на порту ${PORT}`);
+  console.log(`http://localhost:${PORT}`);
+});
