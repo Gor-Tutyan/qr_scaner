@@ -3,22 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Сканер</title>
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Сканер карты — Unibank</title>
   <style>
-    body,html{margin:0;padding:0;height:100%;background:#000;color:#fff;overflow:hidden;text-align:center}
-    #start{display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;background:#111}
-    button{background:#34A853;color:#fff;border:none;padding:25px 60px;font-size:30px;border-radius:25px;cursor:pointer}
-    #video{display:none;width:100vw;height:100vh;object-fit:cover}
-    .frame{position:fixed;top:50%;left:50%;width:320px;height:320px;transform:translate(-50%,-50%);border:6px solid #4CAF50;border-radius:25px;pointer-events:none;z-index:10}
-    #input{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);width:90%;background:rgba(0,0,0,0.9);padding:25px;border-radius:25px;display:none}
-    input,button{width:100%;padding:20px;font-size:26px;margin:12px 0;border:none;border-radius:18px}
-    input{background:#fff;color:#000}
-    button{background:#34A853;color:#fff;font-weight:bold}
+    body, html { margin:0; padding:0; height:100%; background:#000; color:#fff; overflow:hidden; font-family:Arial, sans-serif; }
+    #start { display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%; background:#111; }
+    button { background:#34A853; color:#fff; border:none; padding:20px 50px; font-size:28px; border-radius:20px; cursor:pointer; box-shadow:0 8px 20px rgba(0,0,0,0.4); }
+    #video { display:none; width:100vw; height:100vh; object-fit:cover; }
+    .frame { position:fixed; top:50%; left:50%; width:340px; height:340px; transform:translate(-50%,-50%); border:6px solid #4CAF50; border-radius:25px; pointer-events:none; z-index:10; box-shadow:0 0 30px rgba(76,175,80,0.6); }
+    #input { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); width:90%; max-width:500px; background:rgba(0,0,0,0.92); padding:25px; border-radius:25px; display:none; backdrop-filter:blur(10px); }
+    input { width:100%; padding:20px; font-size:28px; margin:15px 0; border:none; border-radius:18px; text-align:center; }
+    button:active { transform:scale(0.95); }
+    #success { padding:40px; font-size:32px; text-align:center; }
+    h1 { color:#0f9d58; margin:20px 0; }
   </style>
 </head>
 <body>
+
   <div id="start">
-    <h1>Сканирование</h1>
+    <h1>Сканирование карты</h1>
     <button onclick="go()">ОТКРЫТЬ КАМЕРУ</button>
   </div>
 
@@ -26,71 +29,137 @@
   <div class="frame"></div>
 
   <div id="input">
-    <input type="text" id="code" placeholder="Введите код клиента" autofocus>
-    <button onclick="send()">ОТПРАВИТЬ</button>
+    <input type="text" id="code" placeholder="Введите код клиента" autofocus autocomplete="off">
+    <button onclick="send()">ПОДТВЕРДИТЬ</button>
   </div>
 
   <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
   <script>
     let sessionId = null;
+    let stream = null;
+    let scanning = false;
     const video = document.getElementById('video');
 
     async function go() {
-      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
-      document.getElementById("start").style.display="none";
-      video.style.display="block";
-      video.srcObject = stream;
-      video.play();
-      requestAnimationFrame(tick);
+      document.getElementById("start").style.display = "none";
+      video.style.display = "block";
+
+      const constraints = {
+        video: {
+          facingMode: "environment",
+          width: { min: 1280, ideal: 1920 },
+          height: { min: 720, ideal: 1080 }
+        }
+      };
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        video.setAttribute("playsinline", true);
+        await video.play();
+        scanning = true;
+        requestAnimationFrame(tick);
+      } catch (err) {
+        alert("Ошибка камеры. Разрешите доступ к камере в настройках браузера.");
+        console.error(err);
+      }
     }
 
     function tick() {
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0);
-        const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
-        if (code && code.data) {
-          try {
-            const d = JSON.parse(code.data);
-            if (d.sessionId) {
-              sessionId = d.sessionId;
-              document.getElementById("input").style.display = "block";
-              document.getElementById("code").focus();
-            }
-          } catch(e) {}
-        }
+      if (!scanning || video.readyState !== video.HAVE_ENOUGH_DATA) {
+        requestAnimationFrame(tick);
+        return;
       }
+
+      const canvas = document.createElement("canvas");
+      const width = video.videoWidth;
+      const height = video.videoHeight;
+
+      if (width === 0 || height === 0) {
+        requestAnimationFrame(tick);
+        return;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(video, 0, 0, width, height);
+
+      const imageData = ctx.getImageData(0, 0, width, height);
+      const code = jsQR(imageData.data, width, height, { inversionAttempts: "dontInvert" });
+
+      if (code && code.data) {
+        scanning = false;
+        handleQR(code.data);
+        return;
+      }
+
       requestAnimationFrame(tick);
     }
 
+    function handleQR(data) {
+      // 1. Сначала пробуем как URL с параметром sid
+      try {
+        const url = new URL(data);
+        const sid = url.searchParams.get("sid");
+        if (sid) {
+          sessionId = sid;
+          showInputField();
+          return;
+        }
+      } catch (_) {}
+
+      // 2. Потом как JSON (на случай если вы потом перейдёте на JSON)
+      try {
+        const json = JSON.parse(data);
+        if (json.sessionId) {
+          sessionId = json.sessionId;
+          showInputField();
+          return;
+        }
+      } catch (_) {}
+
+      alert("QR-код не распознан. Попробуйте поднести ближе.");
+    }
+
+    function showInputField() {
+      document.getElementById("input").style.display = "block";
+      document.getElementById("code").focus();
+    }
+
     async function send() {
-      const code = document.getElementById("code").value.trim().replace(/\D/g,"");
-      if (!code) return alert("Введите код");
+      let code = document.getElementById("code").value.trim();
+      code = code.replace(/\D/g, "");
+      if (code.length < 4) return alert("Код слишком короткий");
 
-      const r = await fetch("/api/scan", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({sessionId, customerCode:code})
+      const res = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, customerCode: code })
       });
-      const j = await r.json();
 
-      if (j.success) {
-        document.body.innerHTML = `<div style="padding:60px;font-size:34px">
-          <h1 style="color:#0f0">ГОТОВО!</h1>
-          ${j.data.first_name} ${j.data.last_name}<br>
-          Карта: ${j.data.card_number ? j.data.card_number.replace(/(.{4})/g,"$1 ").trim() : "не привязана"}<br><br>
-          <span style="color:#0f0">Данные отправлены на кассу!</span>
-        </div>`;
+      const json = await res.json();
+
+      if (json.success) {
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        document.body.innerHTML = `
+          <div id="success">
+            <h1>ГОТОВО!</h1>
+            Карта успешно выдана<br><br>
+            <div style="color:#0f9d58; font-size:40px;">Данные отправлены на кассу</div>
+          </div>`;
       } else {
-        alert("Ошибка: " + (j.error || "не найден"));
+        alert("Ошибка: " + (json.error || "Клиент не найден"));
+        document.getElementById("code").value = "";
+        document.getElementById("code").focus();
       }
     }
 
+    // Enter в поле ввода
     document.addEventListener("keypress", e => {
-      if (e.key==="Enter" && document.getElementById("input").style.display==="block") send();
+      if (e.key === "Enter" && document.getElementById("input").style.display === "block") {
+        send();
+      }
     });
   </script>
 </body>
