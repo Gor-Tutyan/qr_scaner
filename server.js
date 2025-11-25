@@ -37,8 +37,8 @@ app.get("/", (req, res) => {
   QRCode.toDataURL(mobileUrl, { width: 500, margin: 2 }, (err, qrUrl) => {
     if (err) return res.status(500).send("QR Error");
 
-    res.send(`<!DOCTYPE html>
-<html lang="ru"><head><meta charset="UTF-8"><title>Unibank — Выдача карты</title>
+res.send(`<!DOCTYPE html>
+<html lang="hy"><head><meta charset="UTF-8"><title>Unibank — Քարտի տրամադրում</title>
 <style>
   body{font-family:Arial,sans-serif;background:#f8f9fa;margin:0;padding:20px;text-align:center}
   h1{margin:40px 0 50px;font-size:32px;color:#003087;font-weight:bold}
@@ -51,20 +51,20 @@ app.get("/", (req, res) => {
   button{background:#003087;color:white;padding:16px 40px;font-size:20px;border:none;border-radius:15px;cursor:pointer;margin:15px}
 </style></head><body>
 
-<h1>Выберите дизайн карты клиента</h1>
+<h1>Ընտրեք հաճախորդի քարտի դիզայնը</h1>
 <div class="designs">
-  <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.png"><div class="card-name">Дизайн 1</div></div>
-  <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.png"><div class="card-name">Дизайн 2</div></div>
-  <div class="card-btn" onclick="choose(3)"><img src="/cards/card3.png"><div class="card-name">Дизайн 3</div></div>
-  <div class="card-btn" onclick="choose(4)"><img src="/cards/card4.png"><div class="card-name">Дизайн 4</div></div>
+  <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.png"><div class="card-name">Դիզայն 1</div></div>
+  <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.png"><div class="card-name">Դիզայն 2</div></div>
+  <div class="card-btn" onclick="choose(3)"><img src="/cards/card3.png"><div class="card-name">Դիզայն 3</div></div>
+  <div class="card-btn" onclick="choose(4)"><img src="/cards/card4.png"><div class="card-name">Դիզայն 4</div></div>
 </div>
 
 <div id="qr-area">
-  <h2>Покажите клиенту QR-код</h2>
+  <h2>Ցուցադրեք QR-կոդը հաճախորդին</h2>
   <img src="${qrUrl}" style="width:100%;max-width:420px;margin:20px">
-  <p><strong>Выбран дизайн:</strong> <span id="sel">-</span></p>
-  <div id="status">Ожидаем подтверждение клиента...</div>
-  <button onclick="location.reload()">Новый клиент</button>
+  <p><strong>Ընտրված դիզայն՝</strong> <span id="sel">-</span></p>
+  <div id="status">Սպասում ենք հաճախորդի հաստատմանը...</div>
+  <button onclick="location.reload()">Նոր հաճախորդ</button>
 </div>
 
 <script>
@@ -77,7 +77,7 @@ app.get("/", (req, res) => {
     setInterval(()=>fetch("/api/status/"+sid).then(r=>r.json()).then(data=>{
       if(data.success){
         const name = (data.first_name + " " + data.last_name).toUpperCase();
-        const number = (data.card_number || "4111111111111111").replace(/\s/g, "");
+        const number = (data.card_number || "4111111111111111").replace(/\\s/g, "");
         const design = data.design || 1;
         location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+encodeURIComponent(number)+"&design="+design;
       }

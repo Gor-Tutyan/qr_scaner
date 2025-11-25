@@ -1,74 +1,34 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="hy">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Карта выдана • Unibank</title>
+  <title>Քարտը տրամադրվել է • Unibank</title>
   <style>
-    body {
-      margin: 0;
-      padding: 40px 20px;
-      background: #f5f7fa;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      font-family: 'Segoe UI', Arial, sans-serif;
-    }
-    .card-wrapper {
-      width: 100%;
-      max-width: 420px;           /* нормальный размер — как настоящая карта на экране */
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 15px 40px rgba(0,0,0,0.25);
-      margin-bottom: 30px;
-    }
-    .card-img {
-      width: 100%;
-      height: auto;
-      display: block;
-    }
-    .info {
-      text-align: center;
-      color: #003087;
-      font-weight: bold;
-    }
-    .name {
-      font-size: 26px;
-      margin-bottom: 8px;
-    }
-    .number {
-      font-family: 'Courier New', monospace;
-      font-size: 24px;
-      letter-spacing: 4px;
-      color: #000;
-      background: #e8f0ff;
-      padding: 10px 20px;
-      border-radius: 10px;
-      display: inline-block;
-    }
-    .success {
-      margin-top: 20px;
-      color: #006400;
-      font-size: 18px;
-      font-weight: bold;
-    }
+    body {margin:0;padding:40px 20px;background:#f5f7fa;display:flex;flex-direction:column;align-items:center;font-family:'Segoe UI',Arial,sans-serif;}
+    .card-wrapper {width:100%;max-width:420px;border-radius:16px;overflow:hidden;box-shadow:0 15px 40px rgba(0,0,0,0.25);margin-bottom:30px;}
+    .card-img {width:100%;display:block;}
+    .info {text-align:center;color:#003087;font-weight:bold;}
+    .name {font-size:26px;margin-bottom:8px;}
+    .number {font-family:'Courier New',monospace;font-size:24px;letter-spacing:4px;color:#000;background:#e8f0ff;padding:10px 20px;border-radius:10px;display:inline-block;}
+    .success {margin-top:20px;color:#006400;font-size:20px;font-weight:bold;}
   </style>
 </head>
 <body>
 
   <div class="card-wrapper">
-    <img id="cardImage" class="card-img" alt="Карта Unibank">
+    <img id="cardImage" class="card-img" alt="Unibank քարտ">
   </div>
 
   <div class="info">
-    <div class="name" id="clientName">ИВАН ИВАНОВ</div>
+    <div class="name" id="clientName">ՀԱՅԿ ՀԱՅԿԱԶՈՒՆ</div>
     <div class="number" id="clientNumber">4111 1111 1111 1111</div>
-    <div class="success">Карта успешно выдана</div>
+    <div class="success">Քարտը հաջողությամբ տրամադրվել է</div>
   </div>
 
   <script>
     const params = new URLSearchParams(location.search);
-    const name = decodeURIComponent(params.get('name') || 'ИВАН ИВАНОВ').toUpperCase();
+    const name = decodeURIComponent(params.get('name') || 'ՀԱՅԿ ՀԱՅԿԱԶՒՆ').toUpperCase();
     const number = (params.get('number') || '4111111111111111').replace(/(.{4})/g, '$1 ').trim();
     const design = params.get('design') || 1;
 
