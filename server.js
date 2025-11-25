@@ -58,10 +58,10 @@ app.get("/", (req, res) => {
 
   <h1>Выберите дизайн карты клиента</h1>
   <div class="designs">
-    <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.png" alt="1"><div class="card-name">Дизайн 1</div></div>
-    <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.png" alt="2"><div class="card-name">Дизайн 2</div></div>
-    <div class="card-btn" onclick="choose(3)"><img src="/cards/card3.png" alt="3"><div class="card-name">Дизайн 3</div></div>
-    <div class="card-btn" onclick="choose(4)"><img src="/cards/card4.png" alt="4"><div class="card-name">Дизайн 4</div></div>
+    <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.jpg" alt="1"><div class="card-name">Дизайн 1</div></div>
+    <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.jpg" alt="2"><div class="card-name">Дизайн 2</div></div>
+    <div class="card-btn" onclick="choose(3)"><img src="/cards/card3.jpg" alt="3"><div class="card-name">Дизайн 3</div></div>
+    <div class="card-btn" onclick="choose(4)"><img src="/cards/card4.jpg" alt="4"><div class="card-name">Дизайн 4</div></div>
   </div>
 
   <div id="qr-area">
@@ -118,7 +118,7 @@ app.get("/", (req, res) => {
                     'ctx.strokeText("' + number + '", 475, 560);' +
                     'ctx.fillText("' + number + '", 475, 560);' +
                   '};' +
-                  'img.src = "/cards/card' + (data.design || 1) + '.png?t=' + Date.now() + '";' +
+                  'img.src = "/cards/card' + (data.design || 1) + '.jpg?t=' + Date.now() + '";' +
                 '<\/script>';
             }
           });
