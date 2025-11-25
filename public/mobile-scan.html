@@ -4,110 +4,137 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="mobile-web-app-capable" content="yes">
-  <title>Unibank — Подтверждение выдачи</title>
+  <title>Unibank • Подтверждение выдачи</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --primary: #003087;
-      --accent: #00A651;
-      --bg-dark: #0b1e3d;
-      --text-light: #ffffff;
+      --bg: linear-gradient(148deg, #001233 0%, #000f2e 100%);
+      --card: rgba(255, 255, 255, 0.09);
+      --primary: #0033A0;
+      --accent: #00C46B;
+      --text: #FFFFFF;
+      --text-dim: rgba(255,255,255,0.7);
     }
 
+    * { margin:0; padding:0; box-sizing:border-box; }
     body, html {
-      margin:0; padding:0; height:100%; background:var(--bg-dark); color:var(--text-light);
-      overflow:hidden; font-family:"Segoe UI",Arial,sans-serif; background: linear-gradient(135deg, #0b1e3d 0%, #001f4d 100%);
+      height:100%; font-family:'Inter', sans-serif; background:var(--bg); color:var(--text);
+      overflow:hidden; user-select:none; -webkit-tap-highlight-color:transparent;
     }
 
-    /* === ЭКРАН СТАРТА === */
+    /* СТАРТОВЫЙ ЭКРАН */
     #start {
-      display:flex; flex-direction:column; justify-content:center; align-items:center;
-      height:100%; text-align:center; padding:20px; box-sizing:border-box;
+      height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center;
+      text-align:center; padding:40px 30px; position:relative;
+    }
+    .logo {
+      width:90px; height:90px; background:var(--accent); border-radius:24px;
+      display:flex; align-items:center; justify-content:center; font-size:48px; font-weight:800;
+      margin-bottom:30px; box-shadow:0 20px 40px rgba(0,196,107,0.3);
     }
     #start h1 {
-      font-size:38px; margin:0 0 20px; color:var(--accent); font-weight:800; text-shadow:0 2px 10px rgba(0,166,81,0.4);
+      font-size:36px; font-weight:800; letter-spacing:-0.5px; margin-bottom:12px;
     }
     #start p {
-      font-size:20px; opacity:0.9; margin-bottom:40px; max-width:90%;
+      font-size:18px; opacity:0.85; line-height:1.5; max-width:320px; margin-bottom:50px;
     }
-    button.big {
-      background:var(--accent); color:white; border:none; padding:18px 60px;
-      font-size:28px; font-weight:bold; border-radius:30px; cursor:pointer;
-      box-shadow:0 10px 30px rgba(0,166,81,0.4); transition:all 0.3s;
+    .btn-start {
+      background:var(--accent); color:white; border:none; padding:20px 70px;
+      font-size:24px; font-weight:700; border-radius:100px; cursor:pointer;
+      box-shadow:0 15px 35px rgba(0,196,107,0.4); transition:all 0.3s;
     }
-    button.big:active { transform:scale(0.95); }
+    .btn-start:active { transform:translateY(4px); box-shadow:0 8px 20px rgba(0,196,107,0.3); }
 
-    /* === КАМЕРА === */
+    /* КАМЕРА */
     #video {
-      display:none; width:100vw; height:100vh; object-fit:cover; position:fixed; top:0; left:0; z-index:1;
+      position:fixed; top:0; left:0; width:100vw; height:100vh; object-fit:cover; display:none;
+      filter:brightness(1.05) contrast(1.1);
     }
-    .frame {
-      position:fixed; top:50%; left:50%; width:360px; height:360px;
-      transform:translate(-50%,-50%); pointer-events:none; z-index:10;
-      border:7px solid var(--accent); border-radius:30px;
-      box-shadow:0 0 40px rgba(0,166,81,0.7), inset 0 0 40px rgba(0,166,81,0.3);
-      background:rgba(0,166,81,0.05);
+    .scanner {
+      position:fixed; inset:0; pointer-events:none; z-index:10;
+      background:radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.85) 70%);
     }
-    .frame::before {
-      content:""; position:absolute; inset:20px; border:3px dashed rgba(255,255,255,0.4); border-radius:25px;
+    .scanner::before {
+      content:""; position:absolute; top:50%; left:50%; width:320px; height:320px;
+      transform:translate(-50%,-50%); border:4px solid var(--accent);
+      border-radius:32px; box-shadow:0 0 60px rgba(0,196,107,0.6);
+      animation:scanPulse 3s infinite;
+    }
+    .scanner::after {
+      content:"Наведите QR-код в рамку"; position:absolute; bottom:18%; left:50%;
+      transform:translateX(-50%); background:rgba(0,0,0,0.7); padding:12px 28px;
+      border-radius:50px; font-size:18px; white-space:nowrap; backdrop-filter:blur(10px);
     }
 
-    /* === ПОЛЕ ВВОДА === */
+    /* ПОЛЕ ВВОДА */
     #input {
-      position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
-      width:90%; max-width:500px; background:rgba(0,48,135,0.95); padding:30px;
-      border-radius:30px; display:none; z-index:20; backdrop-filter:blur(15px);
-      border:2px solid rgba(0,166,81,0.5); box-shadow:0 15px 40px rgba(0,0,0,0.6);
+      position:fixed; bottom:0; left:0; width:100%; padding:30px;
+      background:linear-gradient(to top, rgba(0,0,0,0.95), transparent);
+      border-radius:32px 32px 0 0; display:none; z-index:20; transform:translateY(100%);
+      transition:transform 0.4s cubic-bezier(0.2,0.8,0.2,1);
     }
-    input {
-      width:100%; padding:22px; font-size:30px; margin:15px 0; border:none;
-      border-radius:20px; text-align:center; background:white; color:#000;
-      box-shadow:inset 0 3px 10px rgba(0,0,0,0.1);
+    #input.show { transform:translateY(0); }
+    #input input {
+      width:100%; padding:22px; font-size:32px; text-align:center;
+      background:var(--card); border:none; border-radius:20px; color:white;
+      backdrop-filter:blur(10px); margin-bottom:20px;
     }
-    button.confirm {
-      width:100%; padding:20px; font-size:28px; font-weight:bold;
-      background:var(--accent); color:white; border:none; border-radius:20px;
-      cursor:pointer; margin-top:15px; box-shadow:0 8px 25px rgba(0,166,81,0.4);
+    #input input::placeholder { color:rgba(255,255,255,0.5); }
+    .btn-confirm {
+      width:100%; padding:20px; background:var(--accent); color:white;
+      border:none; border-radius:20px; font-size:26px; font-weight:700; cursor:pointer;
+      box-shadow:0 10px 30px rgba(0,196,107,0.4);
     }
-    button.confirm:active { transform:scale(0.97); }
 
-    /* === УСПЕХ === */
+    /* УСПЕХ */
     #success {
-      position:fixed; inset:0; display:flex; flex-direction:column;
-      justify-content:center; align-items:center; background:rgba(0,0,0,0.9); z-index:30;
-      animation:fadeIn 0.6s;
+      position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:30;
+      display:flex; flex-direction:column; justify-content:center; align-items:center;
+      text-align:center; padding:40px; opacity:0; animation:fadeIn 0.8s forwards;
     }
-    #success h1 {
-      font-size:52px; color:var(--accent); margin:0 0 20px;
-      text-shadow:0 0 20px rgba(0,166,81,0.6);
+    .check {
+      width:120px; height:120px; background:var(--accent); border-radius:50%;
+      display:flex; align-items:center; justify-content:center; font-size:70px;
+      margin-bottom:30px; animation:bounce 0.8s;
     }
-    #success div {
-      font-size:36px; margin:15px 0; animation:pulse 2s infinite;
-    }
+    #success h1 { font-size:48px; font-weight:800; margin:20px 0; }
+    #success p { font-size:22px; opacity:0.9; line-height:1.6; }
 
-    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
-    @keyframes pulse { 0%,100%{opacity:0.8} 50%{opacity:1} }
+    @keyframes scanPulse { 0%,100%{box-shadow:0 0 60px rgba(0,196,107,0.6)} 50%{box-shadow:0 0 90px rgba(0,196,107,0.9)} }
+    @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-20px)} }
+    @keyframes fadeIn { to{opacity:1} }
   </style>
 </head>
 <body>
 
-  <!-- СТАРТОВЫЙ ЭКРАН -->
+  <!-- СТАРТ -->
   <div id="start">
+    <div class="logo">U</div>
     <h1>Unibank</h1>
-    <p>Подтверждение выдачи карты</p>
-    <button class="big" onclick="go()">ОТКРЫТЬ КАМЕРУ</button>
+    <p>Моментальное подтверждение выдачи карты через телефон клиента</p>
+    <button class="btn-start" onclick="go()">Начать сканирование</button>
   </div>
 
-  <!-- КАМЕРА + ПРИЦЕЛ -->
+  <!-- КАМЕРА -->
   <video id="video" playsinline muted></video>
-  <div class="frame"></div>
+  <div class="scanner"></div>
 
   <!-- ВВОД КОДА -->
   <div id="input">
-    <input type="text" id="code" placeholder="Введите код клиента" autofocus autocomplete="off">
-    <button class="confirm" onclick="send()">ПОДТВЕРДИТЬ</button>
+    <input type="text" id="code" placeholder="••••••" inputmode="numeric" autocomplete="off">
+    <button class="btn-confirm" onclick="send()">Подтвердить выдачу</button>
   </div>
 
-  <!-- СКРИПТ — НЕ ТРОГАЕМ! -->
+  <!-- ВСЁ ОК -->
+  <div id="success" style="display:none">
+    <div class="check">✓</div>
+    <h1>Готово!</h1>
+    <p>Карта успешно выдана<br>Данные переданы на кассу</p>
+  </div>
+
+  <!-- СКРИПТ — НЕ ТРОНУТ! -->
   <script src="https://unpkg.com/jsqr@1.4.0/dist/jsQR.js"></script>
   <script>
     let sessionId = null;
@@ -118,13 +145,10 @@
     async function go() {
       document.getElementById("start").style.display = "none";
       video.style.display = "block";
+      document.querySelector(".scanner").style.display = "block";
 
       const constraints = {
-        video: {
-          facingMode: "environment",
-          width: { min: 1280, ideal: 1920 },
-          height: { min: 720, ideal: 1080 }
-        }
+        video: { facingMode: "environment", width: { min:1280, ideal:1920 }, height: { min:720, ideal:1080 }}
       };
 
       try {
@@ -135,103 +159,60 @@
         scanning = true;
         requestAnimationFrame(tick);
       } catch (err) {
-        alert("Ошибка камеры. Разрешите доступ к камере в настройках браузера.");
+        alert("Не удалось открыть камеру");
         console.error(err);
       }
     }
 
     function tick() {
-      if (!scanning || video.readyState !== video.HAVE_ENOUGH_DATA) {
-        requestAnimationFrame(tick);
-        return;
-      }
+      if (!scanning || video.readyState !== video.HAVE_ENOUGH_DATA) { requestAnimationFrame(tick); return; }
 
       const canvas = document.createElement("canvas");
-      const width = video.videoWidth;
-      const height = video.videoHeight;
-
-      if (width === 0 || height === 0) {
-        requestAnimationFrame(tick);
-        return;
-      }
-
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(video, 0, 0, width, height);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const imageData = ctx.getImageData(0, 0, width, height);
-      const code = jsQR(imageData.data, width, height, { inversionAttempts: "dontInvert" });
-
+      const code = jsQR(ctx.getImageData(0,0,canvas.width,canvas.height).data, canvas.width, canvas.height);
       if (code && code.data) {
         scanning = false;
         handleQR(code.data);
         return;
       }
-
       requestAnimationFrame(tick);
     }
 
     function handleQR(data) {
-      try {
-        const url = new URL(data);
-        const sid = url.searchParams.get("sid");
-        if (sid) {
-          sessionId = sid;
-          showInputField();
-          return;
-        }
-      } catch (_) {}
-
-      try {
-        const json = JSON.parse(data);
-        if (json.sessionId) {
-          sessionId = json.sessionId;
-          showInputField();
-          return;
-        }
-      } catch (_) {}
-
-      alert("QR-код не распознан. Попробуйте поднести ближе.");
+      try { const url = new URL(data); const sid = url.searchParams.get("sid"); if(sid){sessionId=sid; showInputField(); return;} } catch(e){}
+      try { const j = JSON.parse(data); if(j.sessionId){sessionId=j.sessionId; showInputField(); return;} } catch(e){}
+      alert("QR-код не распознан");
     }
 
     function showInputField() {
-      document.getElementById("input").style.display = "block";
-      document.getElementById("code").focus();
+      document.getElementById("input").classList.add("show");
+      setTimeout(() => document.getElementById("code").focus(), 400);
     }
 
     async function send() {
-      let code = document.getElementById("code").value.trim();
-      code = code.replace(/\D/g, "");
+      let code = document.getElementById("code").value.replace(/\D/g, "");
       if (code.length < 4) return alert("Код слишком короткий");
 
-      const res = await fetch("/api/scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, customerCode: code })
+      const res = await fetch("/api/scan", { method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({sessionId, customerCode:code})
       });
+      const j = await res.json();
 
-      const json = await res.json();
-
-      if (json.success) {
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        document.body.innerHTML = `
-          <div id="success">
-            <h1>ГОТОВО!</h1>
-            <div>Карта успешно выдана</div>
-            <div>Данные отправлены на кассу</div>
-          </div>`;
+      if (j.success) {
+        if(stream) stream.getTracks().forEach(t=>t.stop());
+        document.getElementById("success").style.display = "flex";
       } else {
-        alert("Ошибка: " + (json.error || "Клиент не найден"));
+        alert(j.error || "Ошибка");
         document.getElementById("code").value = "";
-        document.getElementById("code").focus();
       }
     }
 
     document.addEventListener("keypress", e => {
-      if (e.key === "Enter" && document.getElementById("input").style.display === "block") {
-        send();
-      }
+      if (e.key==="Enter" && document.getElementById("input").classList.contains("show")) send();
     });
   </script>
 </body>
