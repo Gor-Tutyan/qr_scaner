@@ -9,7 +9,6 @@ const app = express();
 app.use(express.json());
 app.use(express.static("public"));
 
-// База
 const isProduction = process.env.RENDER || process.env.NODE_ENV === "production";
 const dbPath = isProduction ? "/tmp/database.sqlite" : path.join(__dirname, "db", "database.sqlite");
 if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -17,14 +16,12 @@ if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new sqlite3.Database(dbPath);
 const sessions = new Map();
 
-// ФАЙЛ В GIT — ВИДИМЫЙ НАВСЕГДА
 const RESULT_FILE = path.join(__dirname, "public", "prints", "PrintResult.CPS2");
 if (!fs.existsSync(RESULT_FILE)) {
   fs.writeFileSync(RESULT_FILE, "", "utf8");
-  console.log("Создан public/prints/PrintResult.CPS2");
+  console.log("Создан PrintResult.CPS2");
 }
 
-// Таблица клиентов
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS clients (
     client_code TEXT PRIMARY KEY,
@@ -34,154 +31,288 @@ db.serialize(() => {
   )`);
 });
 
-// Главная страница
-app.get("/", (req, res) => {
+// === ГЛАВНАЯ СТРАНИЦА ===
+app.get("/", async (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
-  sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
+  sessions.set(sessionId, {
+    scanned: false,
+    customerCode: null,
+    timestamp: Date.now(),
+    selection: null
+  });
 
   const mobileUrl = `${req.protocol}://${req.get("host")}/mobile-scan.html?sid=${sessionId}`;
+  let qrUrl = "";
+  try {
+    qrUrl = await QRCode.toDataURL(mobileUrl, { width: 500, margin: 2 });
+  } catch (e) {
+    console.error("QR error:", e);
+  }
 
-  QRCode.toDataURL(mobileUrl, { width: 500, margin: 2 }, (err, qrUrl) => {
-    if (err) return res.status(500).send("QR Error");
+  res.send(`<!DOCTYPE html>
+<html lang="hy">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unibank — Մոմենտալ քարտ</title>
 
-    res.send(`<!DOCTYPE html>
-<html lang="hy"><head><meta charset="UTF-8"><title>Unibank — Քարտի տրամադրում</title>
 <style>
-  body{font-family:Arial,sans-serif;background:#f8f9fa;margin:0;padding:20px;text-align:center}
-  h1{font-size:32px;color:#003087;margin:40px 0}
-  .designs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;max-width:1200px;margin:auto}
-  .card-btn{border-radius:20px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,.25);cursor:pointer;transition:.3s;background:white}
-  .card-btn:hover{transform:translateY(-12px)}
-  .card-btn img{width:100%}
-  .card-name{background:#003087;color:#fff;padding:16px;font-size:22px;font-weight:bold}
-  #qr-area{display:none;margin:50px auto;padding:40px;background:white;border-radius:25px;max-width:650px}
-</style></head><body>
+  body{font-family:system-ui,Arial,sans-serif;background:#f8f9fa;color:#333;margin:0;padding:20px;text-align:center}
+  .btn-big{background:#003087;color:white;border:none;border-radius:20px;padding:30px;font-size:28px;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.2);width:90%;max-width:500px;margin:80px auto;display:block}
+  .btn-big:hover{background:#00205b}
+  .step{display:none;background:white;border-radius:20px;padding:30px;margin:20px auto;box-shadow:0 10px 40px rgba(0,0,0,0.1);max-width:1000px}
+  h1,h2{color:#003087;margin:20px 0}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
+  .card{border-radius:16px;overflow:hidden;box-shadow:0 8px 25px rgba(0,0,0,0.15);cursor:pointer;transition:.3s;background:white}
+  .card:hover{transform:translateY(-10px)}
+  .card img{width:100%;height:150px;object-fit:cover}
+  .card div{padding:16px;background:#003087;color:white;font-weight:bold}
+  .selected{border:5px solid #003087}
+  .currency-grid{display:flex;flex-wrap:wrap;gap:15px;justify-content:center;margin:40px 0}
+  .currency-btn{background:#003087;color:white;padding:16px 32px;border-radius:12px;font-size:20px;cursor:pointer}
+  .currency-btn.selected{background:#00205b}
+  #qr-area{display:none;background:white;padding:50px;border-radius:20px;box-shadow:0 15px 50px rgba(0,0,0,0.2);max-width:600px;margin:40px auto}
+</style>
 
-<h1>Ընտրեք քարտի դիզայնը</h1>
-<div class="designs">
-  <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.png"><div class="card-name">Դիզայն 1</div></div>
-  <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.png"><div class="card-name">Դիզայն 2</div></div>
-  <div class="card-btn" onclick="choose(3)"><img src="/cards/card3.png"><div class="card-name">Դիզայն 3</div></div>
-  <div class="card-btn" onclick="choose(4)"><img src="/cards/card4.png"><div class="card-name">Դիզայն 4</div></div>
+</head>
+<body>
+
+<button class="btn-big" onclick="document.getElementById('step1').style.display='block';this.style.display='none'">
+  Ստանալ մոմենտալ քարտ
+</button>
+
+<div id="step1" class="step"><h1>Ընտրեք բրենդը</h1><div class="grid" id="brands"></div></div>
+<div id="step2" class="step"><h1 id="brand-title"></h1><div class="grid" id="products"></div></div>
+
+<div id="step3" class="step">
+  <h1 id="product-title"></h1>
+  <h2>Ընտրեք դիզայնը</h2>
+  <div class="grid" id="designs"></div>
+  <h2>Ընտրեք արժույթը</h2>
+  <div class="currency-grid" id="currencies"></div>
+  <br>
+  <button onclick="confirmChoice()" style="padding:16px 60px;font-size:22px;background:#003087;color:white;border:none;border-radius:12px;cursor:pointer">
+    Շարունակել
+  </button>
 </div>
 
 <div id="qr-area">
   <h2>Ցուցադրեք QR-կոդը հաճախորդին</h2>
   <img src="${qrUrl}" style="max-width:420px"><br><br>
-  <strong>Դիզայն՝ <span id="sel">-</span></strong><br><br>
-  <button onclick="location.reload()">Նոր հաճախորդ</button>
+  <div id="info" style="font-size:20px;font-weight:bold;line-height:1.8"></div><br>
+  <button onclick="location.reload()" style="padding:15px 40px;font-size:18px">Նոր հաճախորդ</button>
 </div>
 
 <script>
   const sid = "${sessionId}";
-  function choose(d) {
-    fetch("/api/set-design", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sessionId:sid,design:d})});
-    document.querySelector(".designs").style.display="none";
-    document.getElementById("qr-area").style.display="block";
-    document.getElementById("sel").textContent = d;
-    const t = setInterval(()=>{
-      fetch("/api/status/"+sid).then(r=>r.json()).then(data=>{
-        if(data.success){
-          clearInterval(t);
-          const name = (data.first_name + " " + data.last_name).toUpperCase();
-          const number = data.card_number || "4111111111111111";
-          const design = data.design || 1;
-          location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+number+"&design="+design;
+  let cfg = null;
+  let sel = {brand:null, product:null, designId:null, currency:null};
+
+  fetch("/config/cards.json")
+    .then(r => r.json())
+    .then(c => {
+      cfg = c;
+      document.getElementById("brands").innerHTML =
+        Object.keys(cfg.brands).map(k => {
+          const b = cfg.brands[k];
+          return \`
+            <div class="card" onclick="chooseBrand('\${k}')">
+              <img src="\${b.icon}" onerror="this.src='/icons/fallback.png'">
+              <div>\${b.name}</div>
+            </div>
+          \`;
+        }).join("");
+    });
+
+  function chooseBrand(k) {
+    sel.brand = k;
+    const b = cfg.brands[k];
+    document.getElementById("brand-title").textContent = b.name;
+    document.getElementById("step1").style.display = "none";
+    document.getElementById("step2").style.display = "block";
+
+    document.getElementById("products").innerHTML =
+      Object.keys(b.products).map(p => {
+        return \`
+          <div class="card" onclick="chooseProduct('\${p}')">
+            <div style="padding:60px 20px;font-size:24px">\${b.products[p].name}</div>
+          </div>
+        \`;
+      }).join("");
+  }
+
+  function chooseProduct(p) {
+    sel.product = p;
+    const brand = cfg.brands[sel.brand];
+    const prod = brand.products[p];
+
+    document.getElementById("product-title").textContent =
+      brand.name + " " + prod.name;
+
+    document.getElementById("step2").style.display = "none";
+    document.getElementById("step3").style.display = "block";
+
+    // Designs
+    document.getElementById("designs").innerHTML =
+      prod.designs.map(id => {
+        const d = cfg.designs[id];
+        return \`
+          <div class="card" onclick="selectDesign(\${id}, this)">
+            <img src="\${d.image}" onerror="this.src='/cards/fallback.jpg'">
+            <div>\${d.name}<br><small>\${d.designCode}</small></div>
+          </div>
+        \`;
+      }).join("");
+
+    // Currencies
+    document.getElementById("currencies").innerHTML =
+      prod.currencies.map(cur => \`
+        <div class="currency-btn"
+             onclick="sel.currency='\${cur}';document.querySelectorAll('.currency-btn').forEach(x=>x.classList.remove('selected'));this.classList.add('selected')">
+          \${cur}
+        </div>
+      \`).join("");
+  }
+
+  function selectDesign(id, el) {
+    sel.designId = id;
+    document.querySelectorAll("#designs .card").forEach(c => c.classList.remove("selected"));
+    el.classList.add("selected");
+  }
+
+  function confirmChoice() {
+    if (!sel.designId) return alert("Ընտրեք դիզայնը");
+    if (!sel.currency) return alert("Ընտրեք արժույթը");
+
+    const design = cfg.designs[sel.designId];
+    const brandName = cfg.brands[sel.brand].name;
+    const prodName = cfg.brands[sel.brand].products[sel.product].name;
+
+    fetch("/api/set-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: sid,
+        selection: {
+          brand: sel.brand,
+          product: sel.product,
+          designId: sel.designId,
+          designCode: design.designCode,
+          currency: sel.currency
         }
-      }).catch(()=>{});
+      })
+    });
+
+    document.getElementById("info").innerHTML = \`
+      <b>\${brandName} \${prodName}</b><br>
+      Դիզայն՝ \${design.name} (\${design.designCode})<br>
+      Արժույթ՝ \${sel.currency}
+    \`;
+
+    document.getElementById("step3").style.display = "none";
+    document.getElementById("qr-area").style.display = "block";
+
+    const poll = setInterval(() => {
+      fetch("/api/status/" + sid)
+        .then(r => r.json())
+        .then(d => {
+          if (d.success) {
+            clearInterval(poll);
+            const name = encodeURIComponent(d.first_name + " " + d.last_name);
+            location.href =
+              \`/card-result.html?name=\${name}&number=\${d.card_number}&design=\${sel.designId}&code=\${design.designCode}\`;
+          }
+        });
     }, 1500);
   }
 </script>
-</body></html>`);
-  });
+
+</body>
+</html>`);
 });
 
-app.post("/api/set-design", (req, res) => {
-  const { sessionId, design } = req.body;
-  if (sessions.has(sessionId)) sessions.get(sessionId).cardDesign = Number(design);
+// === API: сохранение выбора ===
+app.post("/api/set-selection", (req, res) => {
+  const { sessionId, selection } = req.body;
+  if (sessions.has(sessionId)) {
+    sessions.get(sessionId).selection = selection;
+  }
   res.json({ ok: true });
 });
 
+// === API: статус ===
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
-  if (!s || !s.scanned) return res.json({ pending: true });
+  if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
 
   db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
     if (err || !row) return res.json({ pending: true });
+
     res.json({
       success: true,
       first_name: row.first_name || "ԱՆՈՒՆ",
       last_name: row.last_name || "ԱԶԳԱՆՈՒՆ",
-      card_number: row.card_number || "4111111111111111",
-      design: s.cardDesign || 1
+      card_number: row.card_number || "4111111111111111"
     });
   });
 });
 
-// ГЛАВНОЕ — РАБОЧАЯ ЗАПИСЬ В GIT
+// === API: обработка сканирования ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
-  if (!sessionId || !customerCode) return res.json({ success: false, error: "Нет данных" });
+  if (!sessionId || !customerCode) return res.json({ success: false });
 
   const session = sessions.get(sessionId);
-  if (!session) return res.json({ success: false, error: "Сессия истекла" });
+  if (!session) return res.json({ success: false });
 
   const code = customerCode.toString().trim().replace(/\D/g, "");
-  if (code.length < 4) return res.json({ success: false, error: "Կոդը շատ կարճ է" });
+  if (code.length < 4) return res.json({ success: false });
 
   db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
-    if (err || !row) return res.json({ success: false, error: "Հաճախորդը չի գտնվել" });
+    if (err || !row) return res.json({ success: false });
 
     session.scanned = true;
     session.customerCode = code;
 
     const cardNumber = (row.card_number || "").replace(/\s/g, "").trim();
+    const sel = session.selection;
     let line = null;
 
-    // Ищем оригинальную строку
     try {
       const files = fs.readdirSync(path.join(__dirname, "public", "prints"));
       for (const file of files) {
         if (!file.toLowerCase().endsWith(".cps2")) continue;
         const content = fs.readFileSync(path.join(__dirname, "public", "prints", file), "utf8");
-        const found = content.split("\n").find(l => l.includes(cardNumber) && l.trim() !== "");
+        const found = content.split("\n").find(l => l.includes(cardNumber) && l.trim());
         if (found) {
           line = found.trim();
-          console.log(`Найдена строка в ${file}: ${line}`);
           break;
         }
       }
-    } catch (e) {
-      console.log("Папка prints не найдена или пустая");
-    }
+    } catch (e) {}
 
-    // Если не нашли — своя строка
     if (!line) {
       const name = `${row.first_name || "ԱՆՈՒՆ"} ${row.last_name || "ԱԶԳԱՆՈՒՆ"}`.trim();
       const now = new Date().toISOString().slice(0,19).replace("T", " ");
-      line = `${cardNumber}\t${name}\t${now}\tISSUED`;
+      const design = sel?.designCode || "UNKNOWN";
+      const cur = sel?.currency || "AMD";
+
+      line = `${cardNumber}\t${name}\t${now}\t${design}\t${cur}\tISSUED`;
     }
 
-    // Записываем в Git
     fs.appendFile(RESULT_FILE, line + "\n", "utf8", (err) => {
-      if (err) {
-        console.error("Ошибка записи:", err);
-        return res.json({ success: false, error: "Не удалось сохранить" });
-      }
-      console.log("УСПЕШНО добавлено в PrintResult.CPS2");
-      res.json({ success: true, line: line });
+      if (err) console.error("Ошибка записи:", err);
+      res.json({ success: true });
     });
   });
 });
 
-// Остальное
+// === Служебные роуты ===
 app.get("/mobile-scan.html", (req, res) => {
   const sid = req.query.sid;
   if (sid && /^[a-z0-9]{32}$/.test(sid)) {
     res.sendFile(path.join(__dirname, "public", "mobile-scan.html"));
-  } else {
-    res.status(400).send("Bad sid");
-  }
+  } else res.status(400).send("Bad sid");
 });
 
 app.get("/PrintResult.CPS2", (req, res) => {
@@ -189,6 +320,7 @@ app.get("/PrintResult.CPS2", (req, res) => {
   res.sendFile(RESULT_FILE);
 });
 
+// Очистка старых сессий
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of sessions) {
@@ -196,8 +328,9 @@ setInterval(() => {
   }
 }, 300000);
 
+// === SERVER START ===
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("Сервер запущен!");
-  console.log(`PrintResult.CPS2 → https://qr-scaner-3zae.onrender.com/PrintResult.CPS2`);
+  console.log("Unibank моментальная выдача запущена!");
+  console.log(`Ссылка на результат: http://localhost:${PORT}/PrintResult.CPS2`);
 });
