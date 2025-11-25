@@ -62,7 +62,7 @@ app.get("/", (req, res) => {
   <div class="designs">
     ${[1,2,3,4].map(i => `
       <div class="card-btn" onclick="choose(${i})">
-        <img src="/cards/card${i}.jpg" alt="Unibank Visa">
+        <img src="/cards/card${i}.png" alt="Unibank Visa">
         <div class="card-name">Дизайн ${i}</div>
       </div>
     `).join('')}
@@ -111,7 +111,7 @@ app.get("/", (req, res) => {
                   'ctx.font="bold 56px \'Courier New\'";ctx.textAlign="center";' +
                   'ctx.strokeText("'+num+'", 475, 560);ctx.fillText("'+num+'", 475, 560);' +
                 '};' +
-                'img.src="/cards/card'+(d.design||1)+'.jpg?v='+Date.now()+'";' +
+                'img.src="/cards/card'+(d.design||1)+'.png?v='+Date.now()+'";' +
               '</script>';
           }
         });
