@@ -4,6 +4,7 @@ const QRCode = require("qrcode");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
+const { exec } = require("child_process");
 
 const app = express();
 app.use(express.json());
@@ -104,23 +105,83 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
+// ПЕЧАТЬ ТОЛЬКО СТРОКИ С НОМЕРОМ КАРТЫ
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   const s = sessions.get(sessionId);
-  if (!s) return res.json({error:"Сессия не найдена"});
-  const code = (customerCode+"").trim().replace(/\D/g,"");
+  if (!s) return res.json({ error: "Сессия не найдена" });
+
+  const code = (customerCode + "").trim().replace(/\D/g, "");
+  if (!code) return res.json({ error: "Код пустой" });
+
   db.get("SELECT * FROM clients WHERE client_code=?", [code], (err, row) => {
-    if (row) { s.customerCode = code; s.scanned = true; res.json({success:true}); }
-    else res.json({error:"Клиент не найден"});
+    if (!row) return res.json({ error: "Клиент не найден" });
+
+    s.customerCode = code;
+    s.scanned = true;
+
+    const cardNumber = (row.card_number || "").replace(/\s/g, "");
+    const printsDir = path.join(__dirname, "public", "prints");
+
+    fs.readdir(printsDir, (err, files) => {
+      if (err || !files) return res.json({ success: true });
+
+      const txtFiles = files.filter(f => f.toLowerCase().endsWith(".txt"));
+
+      let foundLine = null;
+
+      const checkNext = (i) => {
+        if (i >= txtFiles.length || foundLine) {
+          if (foundLine) printOnlyLine(foundLine);
+          return res.json({ success: true });
+        }
+
+        const filePath = path.join(printsDir, txtFiles[i]);
+        fs.readFile(filePath, "utf8", (err, content) => {
+          if (err) return checkNext(i + 1);
+
+          const lines = content.split("\n");
+          const line = lines.find(l => l.replace(/\s/g, "").includes(cardNumber));
+          if (line) {
+            foundLine = line.trim();
+          }
+          checkNext(i + 1);
+        });
+      };
+
+      const printOnlyLine = (text) => {
+        const cleanText = text.trim();
+        if (!cleanText) return;
+
+        console.log("Печатается строка:", cleanText);
+
+        // Создаём временный файл только с этой строкой
+        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
+        fs.writeFileSync(tempFile, cleanText + "\n".repeat(10), "utf8");
+
+        const printCmd = process.platform === "win32"
+          ? `notepad /p "${tempFile}"`
+          : `lp "${tempFile}"`;
+
+        exec(printCmd, (err) => {
+          if (err) console.log("Ошибка печати строки:", err);
+          else console.log("Строка напечатана");
+          // Удаляем временный файл через 5 сек
+          setTimeout(() => fs.unlink(tempFile, () => {}), 5000);
+        });
+      };
+
+      checkNext(0);
+    });
   });
 });
 
-app.get("/mobile", (req,res) => res.sendFile(path.join(__dirname,"public","mobile.html")));
-app.get("/mobile-scan", (req,res) => res.sendFile(path.join(__dirname,"public","mobile-scan.html")));
+app.get("/mobile", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile.html")));
+app.get("/mobile-scan", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile-scan.html")));
 
 setInterval(() => {
   const now = Date.now();
-  for (const [k,v] of sessions) if (now - v.timestamp > 600000) sessions.delete(k);
+  for (const [k, v] of sessions) if (now - v.timestamp > 600000) sessions.delete(k);
 }, 300000);
 
 const PORT = process.env.PORT || 3000;
