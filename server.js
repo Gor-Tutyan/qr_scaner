@@ -77,7 +77,7 @@ app.get("/", (req, res) => {
     setInterval(()=>fetch("/api/status/"+sid).then(r=>r.json()).then(data=>{
       if(data.success){
         const name = (data.first_name + " " + data.last_name).toUpperCase();
-        const number = (data.card_number||"4111111111111111").replace(/(.{4})/g,"$1 ").trim();
+        const number = (data.card_number || "4111111111111111").replace(/\s/g, "");
         const design = data.design || 1;
         location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+encodeURIComponent(number)+"&design="+design;
       }
