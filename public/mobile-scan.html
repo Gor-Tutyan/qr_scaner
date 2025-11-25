@@ -5,49 +5,68 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Unibank — Подтверждение</title>
   <style>
-    body{margin:0;padding:0;height:100vh;background:#003087;color:white;font-family:Arial;display:flex;flex-direction:column;justify-content:center;align-items:center}
+    body{margin:0;padding:20px;background:#003087;color:white;font-family:Arial;text-align:center;height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center}
     h1{font-size:28px;margin:20px 0}
-    .scan{border:4px dashed #fff;border-radius:24px;width:280px;height:280px;display:flex;align-items:center;justify-content:center;font-size:80px;opacity:0.7}
-    button{background:#00c853;color:white;border:none;padding:18px 40px;font-size:20px;border-radius:50px;margin-top:30px;width:80%;max-width:320px}
+    input{font-size:28px;padding:20px;width:90%;max-width:400px;text-align:center;border-radius:15px;border:none;margin:20px 0}
+    button{background:#00c853;color:white;border:none;padding:20px 50px;font-size:24px;border-radius:50px;width:90%;max-width:400px;box-shadow:0 8px 30px rgba(0,200,83,0.4)}
+    .status{margin-top:30px;font-size:20px}
   </style>
 </head>
 <body>
-  <h1>Подтвердите выдачу карты</h1>
-  <p>Отсканируйте ваш код</p>
-  <div class="scan" id="reader"></div>
-  <button onclick="startScan()">СКАНИРОВАТЬ</button>
 
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <h1>Unibank</h1>
+  <p>Введите ваш код клиента</p>
+  <input type="text" id="code" placeholder="Например: 123456" autofocus>
+  <button onclick="sendCode()">ПОДТВЕРДИТЬ</button>
+  <div class="status" id="status"></div>
+
   <script>
     const params = new URLSearchParams(location.search);
     const sessionId = params.get('sid');
 
-    function startScan() {
-      const scanner = new Html5Qrcode("reader");
-      scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
-        (text) => {
-          const code = text.replace(/\D/g, '');
-          if (code && sessionId) {
-            fetch("/api/scan", {
-              method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify({ sessionId, customerCode: code })
-            }).then(r => r.json()).then(res => {
-              if (res.success) {
-                document.body.innerHTML = "<h2>Карта подтверждена!</h2><p>Можете закрыть</p>";
-              } else {
-                alert("Ошибка: " + (res.error || "Неизвестно"));
-              }
-            });
-            scanner.stop();
-          }
-        },
-        () => {}
-      ).catch(() => alert("Камера недоступна"));
+    function sendCode() {
+      const input = document.getElementById("code");
+      const code = input.value.trim().replace(/\D/g, "");
+      
+      if (!code || code.length < 4) {
+        alert("Введите правильный код");
+        return;
+      }
+
+      if (!sessionId) {
+        alert("Ошибка сессии");
+        return;
+      }
+
+      document.getElementById("status").innerHTML = "Проверяем...";
+
+      fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, customerCode: code })
+      })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          document.body.innerHTML = `
+            <h1>ГОТОВО!</h1>
+            <p style="font-size:24px">Карта выдана</p>
+            <p>Можете закрыть страницу</p>
+          `;
+        } else {
+          alert("Ошибка: " + (res.error || "Код не найден"));
+          document.getElementById("status").innerHTML = "";
+        }
+      })
+      .catch(() => {
+        alert("Нет связи с сервером");
+      });
     }
-    if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) setTimeout(startScan, 1000);
+
+    // Enter = отправить
+    document.getElementById("code").addEventListener("keyup", e => {
+      if (e.key === "Enter") sendCode();
+    });
   </script>
 </body>
 </html>

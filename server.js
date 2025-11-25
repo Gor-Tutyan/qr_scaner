@@ -87,7 +87,6 @@ app.get("/", (req, res) => {
   });
 });
 
-// API
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
   if (sessions.has(sessionId)) sessions.get(sessionId).cardDesign = Number(design);
@@ -109,7 +108,7 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// ГЛАВНАЯ ФУНКЦИЯ: поиск в .CPS2 и печать строки
+// ПЕЧАТЬ НА ОБЫЧНОМ ПРИНТЕРЕ A4 — ТОЛЬКО НАЙДЕННАЯ СТРОКА
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   const s = sessions.get(sessionId);
@@ -124,20 +123,19 @@ app.post("/api/scan", (req, res) => {
     s.customerCode = code;
     s.scanned = true;
 
-    const cardNumber = (row.card_number || "").replace(/\s/g, ""); // 4111111111111111
+    const cardNumber = (row.card_number || "").replace(/\s/g, "");
     const printsDir = path.join(__dirname, "public", "prints");
 
     fs.readdir(printsDir, (err, files) => {
       if (err || !files) return res.json({ success: true });
 
-      // Только файлы .CPS2
       const cps2Files = files.filter(f => f.toLowerCase().endsWith(".cps2"));
 
       let foundLine = null;
 
       const checkNext = (i) => {
         if (i >= cps2Files.length || foundLine) {
-          if (foundLine) printLineAsCPS2(foundLine);
+          if (foundLine) printOnPaperA4(foundLine);
           return res.json({ success: true });
         }
 
@@ -152,32 +150,34 @@ app.post("/api/scan", (req, res) => {
         });
       };
 
-      const printLineAsCPS2 = (text) => {
-        console.log("Найдена строка в .CPS2:", text);
+      const printOnPaperA4 = (text) => {
+        console.log("Печать на обычном принтере:", text);
 
-        const cps2Template = `
-^XA
-^MMT
-^PW812
-^LL0406
-^LS0
-^CF0,60
-^FO50,100^FD${text}^FS
-^FO50,200^FDКАРТА ВЫДАНА^FS
-^XZ
-        `.trim();
+        const html = `
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  @page { margin: 2cm; }
+  body { font-family: Arial; text-align: center; padding-top: 6cm; font-size: 48px; font-weight: bold; color: #003087; }
+</style>
+</head>
+<body>
+  <div>${text.replace(/</g, "&lt;")}</div>
+  <br><br><br>
+  <div style="font-size:36px;color:#006400">КАРТА УСПЕШНО ВЫДАНА</div>
+</body></html>`;
 
-        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.CPS2`);
-        fs.writeFileSync(tempFile, cps2Template, "utf8");
+        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.html`);
+        fs.writeFileSync(tempFile, html, "utf8");
 
-        // ПЕЧАТЬ НА ПРИНТЕР КАРТ (Zebra, Evolis и т.д.)
+        // ПЕЧАТЬ НА ОБЫЧНЫЙ ПРИНТЕР (A4)
         const printCmd = process.platform === "win32"
-          ? `print /D:"Zebra" "${tempFile}"`     // ← замени "Zebra" на имя своего принтера
-          : `lp -d Zebra "${tempFile}"`;
+          ? `start /min powershell -Command "Start-Process '${tempFile}' -Verb Print"`
+          : `lp "${tempFile}"`;
 
         exec(printCmd, (err) => {
-          if (err) console.log("Ошибка печати .CPS2:", err);
-          else console.log("Карта отправлена на печать:", tempFile);
+          if (err) console.log("Ошибка печати:", err);
+          else console.log("Напечатано на офисном принтере");
           setTimeout(() => fs.unlink(tempFile, () => {}), 10000);
         });
       };
