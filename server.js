@@ -32,7 +32,7 @@ app.get("/", (req, res) => {
   QRCode.toDataURL(JSON.stringify({ sessionId }), { width: 500, margin: 2 }, (err, qrUrl) => {
     if (err) return res.status(500).send("QR Error");
 
-    res.send(`
+    const html = `
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -58,10 +58,10 @@ app.get("/", (req, res) => {
 
   <h1>Выберите дизайн карты клиента</h1>
   <div class="designs">
-    <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.jpg" alt="1"><div class="card-name">Дизайн 1</div></div>
-    <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.jpg" alt="2"><div class="card-name">Дизайн 2</div></div>
-    <div class="card-btn" onclick="choose(3)"><img src="/cards/card3.jpg" alt="3"><div class="card-name">Дизайн 3</div></div>
-    <div class="card-btn" onclick="choose(4)"><img src="/cards/card4.jpg" alt="4"><div class="card-name">Дизайн 4</div></div>
+    <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.png" alt="1"><div class="card-name">Дизайн 1</div></div>
+    <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.png" alt="2"><div class="card-name">Дизайн 2</div></div>
+    <div class="card-btn" onclick="choose(3)"><img src="/cards/card3.png" alt="3"><div class="card-name">Дизайн 3</div></div>
+    <div class="card-btn" onclick="choose(4)"><img src="/cards/card4.png" alt="4"><div class="card-name">Дизайн 4</div></div>
   </div>
 
   <div id="qr-area">
@@ -79,8 +79,9 @@ app.get("/", (req, res) => {
       fetch("/api/set-design", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sid, design: design })
+        body: JSON.stringify({ sessionId: sid, design })
       });
+
       document.querySelector(".designs").style.display = "none";
       document.getElementById("qr-area").style.display = "block";
       document.getElementById("sel").textContent = design;
@@ -94,60 +95,67 @@ app.get("/", (req, res) => {
           .then(data => {
             if (data.success) {
               clearInterval(interval);
-              const number = (data.card_number || "4111 1111 1111 1111").replace(/(.{4})/g, "$1 ").trim();
+              const number = (data.card_number || "4111111111111111").replace(/(.{4})/g, "$1 ").trim();
               const name = (data.first_name + " " + data.last_name).toUpperCase();
 
               document.getElementById("status").innerHTML = 
                 '<div id="final-card">' +
                   '<canvas id="cardCanvas" width="950" height="600"></canvas>' +
-                '</div>' +
-                '<script>' +
-                  'const canvas = document.getElementById("cardCanvas");' +
-                  'const ctx = canvas.getContext("2d");' +
-                  'const img = new Image();' +
-                  'img.onload = function() {' +
-                    'ctx.drawImage(img, 0, 0, 950, 600);' +
-                    'ctx.fillStyle = "#ffffff";' +
-                    'ctx.strokeStyle = "#000000";' +
-                    'ctx.lineWidth = 6;' +
-                    'ctx.font = "bold 48px Arial";' +
-                    'ctx.strokeText("' + name + '", 130, 480);' +
-                    'ctx.fillText("' + name + '", 130, 480);' +
-                    'ctx.font = "bold 56px \\"Courier New\\", monospace";' +
-                    'ctx.textAlign = "center";' +
-                    'ctx.strokeText("' + number + '", 475, 560);' +
-                    'ctx.fillText("' + number + '", 475, 560);' +
-                  '};' +
-                  'img.src = "/cards/card' + (data.design || 1) + '.jpg?t=' + Date.now() + '";' +
-                '<\/script>';
+                '</div>';
+
+              const canvas = document.getElementById("cardCanvas");
+              const ctx = canvas.getContext("2d");
+              const img = new Image();
+              img.onload = function() {
+                ctx.drawImage(img, 0, 0, 950, 600);
+
+                ctx.fillStyle = "#ffffff";
+                ctx.strokeStyle = "#000000";
+                ctx.lineWidth = 6;
+
+                // Имя держателя
+                ctx.font = "bold 48px Arial";
+                ctx.strokeText(name, 130, 480);
+                ctx.fillText(name, 130, 480);
+
+                // Номер карты
+                ctx.font = "bold 56px 'Courier New', monospace";
+                ctx.textAlign = "center";
+                ctx.strokeText(number, 475, 560);
+                ctx.fillText(number, 475, 560);
+              };
+              img.src = "/cards/card" + (data.design || 1) + ".png?t=" + Date.now();
             }
-          });
+          })
+          .catch(err => console.error("Polling error:", err));
       }, 1800);
     }
   </script>
 </body>
-</html>
-    `);
+</html>`;
+
+    res.send(html);
   });
 });
 
-// API — без изменений
+// === API ===
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
   const s = sessions.get(sessionId);
   if (s) s.cardDesign = Number(design);
-  res.json({ok: true});
+  res.json({ ok: true });
 });
 
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
-  if (!s || !s.scanned || !s.customerCode) return res.json({pending: true});
+  if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
+
   db.get("SELECT * FROM clients WHERE client_code=?", [s.customerCode], (err, row) => {
-    if (err || !row) return res.json({error: "Не найден"});
+    if (err || !row) return res.json({ error: "Не найден" });
     res.json({
       success: true,
-      first_name: row.first_name || "Иван",
-      last_name: row.last_name || "Иванов",
+      first_name: row.first_name || "ИВАН",
+      last_name: row.last_name || "ИВАНОВ",
       card_number: row.card_number || "4111111111111111",
       design: s.cardDesign || 1
     });
@@ -157,14 +165,19 @@ app.get("/api/status/:id", (req, res) => {
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   const s = sessions.get(sessionId);
-  if (!s) return res.json({error: "Сессия не найдена"});
+  if (!s) return res.json({ error: "Сессия не найдена" });
+
   const code = (customerCode + "").trim().replace(/\D/g, "");
-  if (!code) return res.json({error: "Код пустой"});
+  if (!code) return res.json({ error: "Код пустой" });
+
   db.get("SELECT * FROM clients WHERE client_code=?", [code], (err, row) => {
     if (row) {
-      s.customerCode = code; s.scanned = true;
-      res.json({success: true, data: row});
-    } else res.json({error: "Клиент не найден"});
+      s.customerCode = code;
+      s.scanned = true;
+      res.json({ success: true, data: row });
+    } else {
+      res.json({ error: "Клиент не найден" });
+    }
   });
 });
 
@@ -173,8 +186,10 @@ app.get("/mobile-scan", (req, res) => res.sendFile(path.join(__dirname, "public"
 
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of sessions) if (now - v.timestamp > 600000) sessions.delete(k);
+  for (const [k, v] of sessions) {
+    if (now - v.timestamp > 600000) sessions.delete(k);
+  }
 }, 300000);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => console.log(`Сервер запущен на порту ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => console.log(`Сервер запущен: http://localhost:${PORT}`));
