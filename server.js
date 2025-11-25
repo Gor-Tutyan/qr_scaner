@@ -184,6 +184,6 @@ setInterval(() => {
 
 app.listen(3000, "0.0.0.0", () => {
   console.log("Сервер запущен!");
-  console.log("Касса: http://localhost:3000");
+  console.log("Касс: http://localhost:3000");
   console.log("Мобильная версия: http://<твой-ip>:3000/mobile");
 });
