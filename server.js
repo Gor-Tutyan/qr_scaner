@@ -16,9 +16,34 @@ if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new sqlite3.Database(dbPath);
 const sessions = new Map();
 
-// Путь к файлу результата
-const PRINT_RESULT_FILE = path.join(__dirname, "public", "PrintResult.CPS2");
+// ──────────────────────────────────────────────────────────────
+// ВАЖНО: где будет реально храниться файл (надёжное место)
+// ──────────────────────────────────────────────────────────────
+const REAL_RESULT_FILE = "/tmp/PrintResult.CPS2";                     // ← надёжно
+const PUBLIC_RESULT_FILE = path.join(__dirname, "public", "PrintResult.CPS2"); // ← для совместимости
 
+// Создаём симлинк при старте сервера (чтобы принтер видел старый путь)
+function createSymlink() {
+  fs.unlink(PUBLIC_RESULT_FILE, () => { // удаляем старый линк/файл, если был
+    fs.symlink(REAL_RESULT_FILE, PUBLIC_RESULT_FILE, (err) => {
+      if (err) {
+        console.log("Не удалось создать симлинк public/PrintResult.CPS2 → /tmp/PrintResult.CPS2");
+        console.log("Придётся использовать прямой путь /tmp/PrintResult.CPS2");
+      } else {
+        console.log("Симлинк успешно создан: public/PrintResult.CPS2 → /tmp/PrintResult.CPS2");
+      }
+    });
+  });
+}
+
+// Гарантируем существование /tmp файла при старте
+if (!fs.existsSync(REAL_RESULT_FILE)) {
+  fs.writeFileSync(REAL_RESULT_FILE, "", "utf8");
+  console.log("Создан пустой /tmp/PrintResult.CPS2");
+}
+createSymlink();
+
+// ──────────────────────────────────────────────────────────────
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS clients (
     client_code TEXT PRIMARY KEY,
@@ -28,7 +53,9 @@ db.serialize(() => {
   )`);
 });
 
-// === ГЛАВНАЯ СТРАНИЦА КАССЫ ===
+// =======================
+
+// ======================= ГЛАВНАЯ СТРАНИЦА КАССЫ =======================
 app.get("/", (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
   sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
@@ -70,33 +97,33 @@ app.get("/", (req, res) => {
 
 <script>
   const sid = "${sessionId}";
-  function choose(d) {
-    fetch("/api/set-design", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:sid,design:d})});
-    document.querySelector(".designs").style.display="none";
-    document.getElementById("qr-area").style.display="block";
-    document.getElementById("sel").textContent = d;
-    setInterval(()=>fetch("/api/status/"+sid).then(r=>r.json()).then(data=>{
-      if(data.success){
-        const name = (data.first_name + " " + data.last_name).toUpperCase();
-        const number = (data.card_number || "4111111111111111").replace(/\\s/g, "");
-        const design = data.design || 1;
-        location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+encodeURIComponent(number)+"&design="+design;
-      }
-    }), 1500);
-  }
+ function choose(d) {
+   fetch("/api/set-design", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:sid,design:d})});
+   document.querySelector(".designs").style.display="none";
+   document.getElementById("qr-area").style.display="block";
+   document.getElementById("sel").textContent = d;
+   setInterval(()=>fetch("/api/status/"+sid).then(r=>r.json()).then(data=>{
+     if(data.success){
+       const name = (data.first_name + " " + data.last_name).toUpperCase();
+       const number = (data.card_number || "4111111111111111");
+       const design = data.design || 1;
+       location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+encodeURIComponent(number)+"&design="+design;
+     }
+   }), 1500);
+ }
 </script>
 </body></html>`);
   });
 });
 
-// Сохранение дизайна
+// Сохранение выбранного дизайна
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
   if (sessions.has(sessionId)) sessions.get(sessionId).cardDesign = Number(design);
   res.json({ ok: true });
 });
 
-// Статус для кассы
+// Статус для кассы (после подтверждения клиентом)
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
@@ -113,7 +140,7 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// === ГЛАВНЫЙ ЭНДПОИНТ СКАНИРОВАНИЯ + ЗАПИСЬ В PrintResult.CPS2 ===
+// ======================= СКАНИРОВАНИЕ + ГАРАНТИРОВАННАЯ ЗАПИСЬ =======================
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   if (!sessionId || !customerCode) return res.json({ error: "Տվյալներ չկան" });
@@ -130,86 +157,38 @@ app.post("/api/scan", (req, res) => {
       return res.json({ error: "Հաճախորդը չի գտնվել" });
     }
 
+    // Отмечаем успешное подтверждение
     s.scanned = true;
     s.customerCode = code;
 
-    const cleanCardNumber = (row.card_number || "").replace(/\s/g, "").trim();
-    console.log(`Հաճախորդ՝ ${row.first_name} ${row.last_name} | Քարտ՝ ${cleanCardNumber}`);
+    const fullName = `${row.first_name || "ԱՆՈՒՆ"} ${row.last_name || "ԱԶԳԱՆՈՒՆ"}`.trim();
+    const cleanCardNumber = (row.card_number || "4111111111111111").replace(/\s/g, "");
+    const timestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const line = `${cleanCardNumber}\t${fullName}\t${timestamp}`;
 
-    const printsDir = path.join(__dirname, "public", "prints");
+    console.log(`ՀԱՋՈՂՈՒԹՅՈՒՆ! Քարտը տրամադրվել է → ${fullName} | ${cleanCardNumber}`);
 
-    fs.access(printsDir, err => {
+    // Записываем в /tmp (надёжно) + обновляем симлинк
+    fs.appendFile(REAL_RESULT_FILE, line + "\n", "utf8", (err) => {
       if (err) {
-        console.log("public/prints պապկան չի գտնվել");
-        return res.json({ success: true, saved: false, note: "prints պապկան բացակայում է" });
+        console.error("ՍԽԱԼ գրելիս /tmp/PrintResult.CPS2:", err.message);
+        return res.json({ success: true, saved: false });
       }
 
-      fs.readdir(printsDir, (err, files) => {
-        if (err || !files || files.length === 0) {
-          console.log("prints պապկան դատարկ է");
-          return res.json({ success: true, saved: false, note: "Ֆայլեր չկան" });
-        }
+      console.log("→ Записано в PrintResult.CPS2:", line);
+      createSymlink(); // обновляем симлинк на случай, если он сломался
 
-        const cps2Files = files
-          .filter(f => f.toLowerCase().endsWith(".cps2"))
-          .map(f => path.join(printsDir, f));
-
-        if (cps2Files.length === 0) {
-          console.log(".CPS2 ֆայլեր չկան");
-          return res.json({ success: true, saved: false, note: "Չկան .CPS2 ֆայլեր" });
-        }
-
-        let foundLine = null;
-        let checked = 0;
-
-        const checkNext = () => {
-          if (checked >= cps2Files.length) {
-            if (foundLine) {
-              // ЗАПИСЫВАЕМ НАЙДЕННУЮ СТРОКУ В PrintResult.CPS2
-              fs.writeFile(PRINT_RESULT_FILE, foundLine.trim() + "\n", "utf8", (err) => {
-                if (err) {
-                  console.log("Սխալ PrintResult.CPS2 գրելիս:", err.message);
-                  res.json({ success: true, saved: false, error: "Ֆայլի գրառման սխալ" });
-                } else {
-                  console.log("ՀԱՋՈՂՈՒԹՅՈՒՆ → PrintResult.CPS2 թարմացվել է:");
-                  console.log(foundLine.trim());
-                  res.json({ success: true, saved: true, file: "PrintResult.CPS2" });
-                }
-              });
-            } else {
-              console.log("Քարտի համարով տողը ՉԻ ԳՏՆՎԵԼ ոչ մի ֆայլում");
-              res.json({ success: true, saved: false, note: "Տողը չի գտնվել" });
-            }
-            return;
-          }
-
-          const filePath = cps2Files[checked++];
-          fs.readFile(filePath, "utf8", (err, content) => {
-            if (err) {
-              console.log(`Սխալ ${path.basename(filePath)} կարդալիս:`, err.message);
-              checkNext();
-              return;
-            }
-
-            const line = content.split("\n").find(l => l.includes(cleanCardNumber) && l.trim() !== "");
-            if (line) {
-              foundLine = line;
-              console.log(`ԳՏՆՎԵԼ է ${path.basename(filePath)} → ${line.trim()}`);
-              // Продолжаем, но уже с найденной строкой — потом запишем
-              checkNext();
-            } else {
-              checkNext();
-            }
-          });
-        };
-
-        checkNext();
+      res.json({ 
+        success: true, 
+        saved: true, 
+        file: "PrintResult.CPS2",
+        line: line
       });
     });
   });
 });
 
-// Мобильная страница
+// Мобильные страницы
 app.get("/mobile-scan.html", (req, res) => {
   const sid = req.query.sid;
   if (sid && /^[a-z0-9]{32}$/.test(sid)) {
@@ -220,6 +199,13 @@ app.get("/mobile-scan.html", (req, res) => {
 });
 
 app.get("/mobile", (req, res) => res.redirect("/"));
+
+// Прямой доступ к файлу (на всякий случай)
+app.get("/PrintResult.CPS2", (req, res) => {
+  res.sendFile(REAL_RESULT_FILE, (err) => {
+    if (err) res.status(404).send("Файл ещё не создан");
+  });
+});
 
 // Очистка старых сессий
 setInterval(() => {
@@ -233,4 +219,6 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
   console.log("Unibank սերվերը գործարկվել է!");
   console.log(`http://localhost:${PORT}`);
+  console.log(`Файл результата: ${REAL_RESULT_FILE}`);
+  console.log(`Публичный путь: /PrintResult.CPS2`);
 });
