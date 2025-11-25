@@ -16,7 +16,7 @@ const dbPath = isProduction ? "/tmp/database.sqlite" : path.join(__dirname, "db"
 if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new sqlite3.Database(dbPath);
-const sessions = new Map();
+const sessions = new Map(); // sessionId → { scanned, customerCode, cardDesign, timestamp }
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS clients (
@@ -27,6 +27,7 @@ db.serialize(() => {
   )`);
 });
 
+// === ГЛАВНАЯ СТРАНИЦА КАССЫ ===
 app.get("/", (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
   sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
@@ -37,9 +38,9 @@ app.get("/", (req, res) => {
     if (err) return res.status(500).send("QR Error");
 
     res.send(`<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Unibank — Выдача карты</title>
+<html lang="ru"><head><meta charset="UTF-8"><title>Unibank — Выдача карты</title>
 <style>
-  body{font-family:Arial;background:#f8f9fa;margin:0;padding:20px;text-align:center}
+  body{font-family:Arial,sans-serif;background:#f8f9fa;margin:0;padding:20px;text-align:center}
   h1{margin:40px 0 50px;font-size:32px;color:#003087;font-weight:bold}
   .designs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;max-width:1200px;margin:0 auto}
   .card-btn{border-radius:20px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,0.25);cursor:pointer;transition:.3s;background:white}
@@ -80,24 +81,29 @@ app.get("/", (req, res) => {
         const design = data.design || 1;
         location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+encodeURIComponent(number)+"&design="+design;
       }
-    }),1800);
+    }),1500);
   }
 </script>
 </body></html>`);
   });
 });
 
+// Сохранение выбранного дизайна
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
-  if (sessions.has(sessionId)) sessions.get(sessionId).cardDesign = Number(design);
-  res.json({ok:true});
+  if (sessions.has(sessionId)) {
+    sessions.get(sessionId).cardDesign = Number(design);
+  }
+  res.json({ ok: true });
 });
 
+// Проверка статуса (для кассы)
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
-  if (!s || !s.scanned || !s.customerCode) return res.json({pending:true});
-  db.get("SELECT * FROM clients WHERE client_code=?", [s.customerCode], (err, row) => {
-    if (!row) return res.json({error:"Не найден"});
+  if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
+
+  db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
+    if (!row) return res.json({ error: "Клиент не найден" });
     res.json({
       success: true,
       first_name: row.first_name || "ИВАН",
@@ -108,77 +114,70 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// ПЕЧАТЬ НА ОБЫЧНОМ ПРИНТЕРЕ A4 — ТОЛЬКО НАЙДЕННАЯ СТРОКА
+// === ГЛАВНЫЙ ЭНДПОИНТ СКАНИРОВАНИЯ (от мобильного) ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
+  if (!sessionId || !customerCode) return res.json({ error: "Нет данных" });
+
   const s = sessions.get(sessionId);
-  if (!s) return res.json({ error: "Сессия не найдена" });
+  if (!s) return res.json({ error: "Сессия истекла" });
 
-  const code = (customerCode + "").trim().replace(/\D/g, "");
-  if (!code) return res.json({ error: "Код пустой" });
+  const code = customerCode.toString().trim().replace(/\D/g, "");
+  if (code.length < 4) return res.json({ error: "Короткий код" });
 
-  db.get("SELECT * FROM clients WHERE client_code=?", [code], (err, row) => {
-    if (!row) return res.json({ error: "Клиент не найден" });
+  db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
+    if (err || !row) {
+      return res.json({ error: "Клиент не найден в базе" });
+    }
 
-    s.customerCode = code;
+    // Запоминаем, что клиент подтвердил выдачу
     s.scanned = true;
+    s.customerCode = code;
 
-    const cardNumber = (row.card_number || "").replace(/\s/g, "");
+    // === ПЕЧАТЬ НА ОБЫЧНОМ ПРИНТЕРЕ A4 (поиск строки в .cps2 файлах) ===
     const printsDir = path.join(__dirname, "public", "prints");
-
     fs.readdir(printsDir, (err, files) => {
       if (err || !files) return res.json({ success: true });
 
       const cps2Files = files.filter(f => f.toLowerCase().endsWith(".cps2"));
-
       let foundLine = null;
 
       const checkNext = (i) => {
         if (i >= cps2Files.length || foundLine) {
-          if (foundLine) printOnPaperA4(foundLine);
+          if (foundLine) printA4(foundLine);
           return res.json({ success: true });
         }
 
         const filePath = path.join(printsDir, cps2Files[i]);
         fs.readFile(filePath, "utf8", (err, content) => {
           if (err) return checkNext(i + 1);
-
-          const line = content.split("\n").find(l => l.includes(cardNumber));
+          const line = content.split("\n").find(l => l.includes(row.card_number?.replace(/\s/g, "") || ""));
           if (line) foundLine = line.trim();
-
           checkNext(i + 1);
         });
       };
 
-      const printOnPaperA4 = (text) => {
-        console.log("Печать на обычном принтере:", text);
-
-        const html = `
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<style>
-  @page { margin: 2cm; }
-  body { font-family: Arial; text-align: center; padding-top: 6cm; font-size: 48px; font-weight: bold; color: #003087; }
-</style>
-</head>
-<body>
-  <div>${text.replace(/</g, "&lt;")}</div>
-  <br><br><br>
-  <div style="font-size:36px;color:#006400">КАРТА УСПЕШНО ВЫДАНА</div>
-</body></html>`;
+      const printA4 = (text) => {
+        console.log("Печать на A4:", text);
+        const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+          @page { margin: 2cm; }
+          body { font-family: Arial; text-align: center; padding-top: 7cm; font-size: 48px; font-weight: bold; color: #003087; }
+        </style></head><body>
+          <div>${text.replace(/</g, "&lt;")}</div>
+          <br><br><br>
+          <div style="font-size:40px;color:#006400">КАРТА УСПЕШНО ВЫДАНА</div>
+        </body></html>`;
 
         const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.html`);
         fs.writeFileSync(tempFile, html, "utf8");
 
-        // ПЕЧАТЬ НА ОБЫЧНЫЙ ПРИНТЕР (A4)
-        const printCmd = process.platform === "win32"
-          ? `start /min powershell -Command "Start-Process '${tempFile}' -Verb Print"`
+        const cmd = process.platform === "win32"
+          ? `powershell -Command "Start-Process '${tempFile}' -Verb Print"`
           : `lp "${tempFile}"`;
 
-        exec(printCmd, (err) => {
+        exec(cmd, (err) => {
           if (err) console.log("Ошибка печати:", err);
-          else console.log("Напечатано на офисном принтере");
-          setTimeout(() => fs.unlink(tempFile, () => {}), 10000);
+          setTimeout(() => fs.unlink(tempFile, () => {}), 15000);
         });
       };
 
@@ -187,13 +186,31 @@ app.post("/api/scan", (req, res) => {
   });
 });
 
-app.get("/mobile", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile.html")));
-app.get("/mobile-scan", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile-scan.html")));
+// Страницы мобильного сканера
+app.get("/mobile-scan.html", (req, res) => {
+  const sid = req.query.sid;
+  if (sid && sid.length === 32) {
+    // Если sid валидный — просто показываем страницу (sessionId уже придёт в QR)
+    res.sendFile(path.join(__dirname, "public", "mobile-scan.html"));
+  } else {
+    res.status(400).send("Неверный или отсутствует sid");
+  }
+});
 
+app.get("/mobile", (req, res) => res.redirect("/"));
+
+// Очистка старых сессий
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of sessions) if (now - v.timestamp > 600000) sessions.delete(k);
-}, 300000);
+  for (const [k, v] of sessions) {
+    if (now - v.timestamp > 10 * 60 * 1000) { // 10 минут
+      sessions.delete(k);
+    }
+  }
+}, 5 * 60 * 1000);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => console.log(`Сервер запущен: http://localhost:${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Сервер запущен на порту ${PORT}`);
+  console.log(`http://localhost:${PORT}`);
+});
