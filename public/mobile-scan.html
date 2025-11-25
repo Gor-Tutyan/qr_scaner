@@ -5,104 +5,142 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Unibank — Подтверждение</title>
   <style>
-    body{margin:0;padding:20px;background:#003087;color:#fff;font-family:Arial;text-align:center;height:100vh;display:flex;flex-direction:column;justify-content:flex-start;align-items:center}
-    h1{font-size:28px;margin:30px 0 10px}
-    p{font-size:18px;opacity:0.9}
-    .scanner{width:300px;height:300px;border:4px dashed #fff;border-radius:20px;margin:20px auto;background:rgba(255,255,255,0.1)}
-    input{font-size:28px;padding:16px;width:90%;max-width:400px;border:none;border-radius:15px;text-align:center;margin:15px 0}
-    button{background:#00c853;color:white;border:none;padding:18px;font-size:22px;border-radius:50px;width:90%;max-width:400px;margin:10px 0;cursor:pointer}
-    .or{margin:20px 0;font-size:18px;opacity:0.8}
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background: linear-gradient(135deg, #003087, #0050b3);
+      color: white;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      text-align: center;
+    }
+    .header {
+      padding: 40px 20px 20px;
+    }
+    .logo {
+      width: 80px;
+      margin-bottom: 20px;
+    }
+    h1 {
+      font-size: 26px;
+      margin: 10px 0;
+      font-weight: 600;
+    }
+    .subtitle {
+      font-size: 18px;
+      opacity: 0.9;
+      margin-bottom: 40px;
+    }
+    .scanner {
+      padding: 0 30px;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .scan-area {
+      width: 280px;
+      height: 280px;
+      border: 4px dashed rgba(255,255,255,0.4);
+      border-radius: 50px;
+      margin: 0 auto 30px;
+      border-radius: 24px;
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(10px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 80px;
+    }
+    .btn {
+      background: #00c853;
+      color: white;
+      border: none;
+      padding: 18px 40px;
+      font-size: 20px;
+      font-weight: bold;
+      border-radius: 50px;
+      margin: 20px auto;
+      box-shadow: 0 8px 25px rgba(0,200,83,0.4);
+      cursor: pointer;
+      width: 80%;
+      max-width: 320px;
+    }
+    .btn:active {
+      transform: scale(0.96);
+      background: #00b140;
+    }
+    .footer {
+      padding: 30px;
+      font-size: 14px;
+      opacity: 0.7;
+    }
   </style>
 </head>
 <body>
 
-  <h1>Unibank</h1>
-  <p>Отсканируйте или введите код клиента</p>
+  <div class="header">
+    <img src="/cards/unibank-logo.png" alt="Unibank" class="logo">
+    <h1>Подтвердите выдачу карты</h1>
+    <div class="subtitle">Отсканируйте ваш код клиента</div>
+  </div>
 
-  <div class="scanner" id="reader"></div>
+  <div class="scanner">
+    <div class="scan-area" id="reader"></div>
+    <button class="btn" onclick="startScan()">СКАНИРОВАТЬ КОД</button>
+  </div>
 
-  <div class="or">— ИЛИ —</div>
-
-  <input type="text" id="manualCode" placeholder="Введите код вручную" autofocus>
-  <button onclick="sendCode()">ПОДТВЕРДИТЬ</button>
+  <div class="footer">
+    Unibank • Моментальная выдача карт
+  </div>
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script>
-    // ВАЖНО: sessionId теперь вшивается сервером динамически!
-    // Поэтому убираем всю проверку на null — её делает уже сервер
-    const sessionId = window.SESSION_ID || null;
+    const urlParams = new URLSearchParams(location.search);
+    const sessionId = urlParams.get('sid');
 
-    // Если сервер не подставил sid — значит ссылка битая (на всякий случай)
-    if (!sessionId) {
-      document.body.innerHTML = `
-        <h2 style="margin-top:100px;color:#fff">
-          Ссылка устарела или повреждена<br><br>
-          <button onclick="location.href='/'" style="padding:12px 24px;font-size:18px;background:#006400;border:none;border-radius:10px;color:#fff;cursor:pointer">
-            На главную
-          </button>
-        </h2>`;
-      throw new Error("No sessionId");
-    }
+    function startScan() {
+      const html5QrCode = new Html5Qrcode("reader");
+      const config = { fps: 10, qrbox: { width: 240, height: 240 } };
 
-    function sendToServer(code) {
-      if (!code || code.length < 4) return alert("Код слишком короткий");
-
-      fetch("/api/scan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, customerCode: code })
-      })
-      .then(r => r.json())
-      .then(res => {
-        if (res.success) {
-          document.body.innerHTML = `
-            <h1 style="margin-top:100px">ГОТОВО!</h1>
-            <p style="font-size:26px">Карта успешно выдана</p>
-            <button onclick="location.href='/'" style="margin-top:30px;padding:16px 32px;font-size:20px;background:#006400;border:none;border-radius:50px;color:#fff;cursor:pointer">
-              Новый клиент
-            </button>`;
-        } else {
-          alert("Ошибка: " + (res.error || "Клиент не найден"));
-        }
-      })
-      .catch(err => {
-        console.error(err);
-        alert("Нет связи с сервером");
-      });
-    }
-
-    function startScanner() {
-      const scanner = new Html5Qrcode("reader");
-      scanner.start(
+      html5QrCode.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (text) => {
-          const code = text.replace(/\D/g, '');
-          if (code.length >= 4) {
-            sendToServer(code);
-            scanner.stop();
+        config,
+        (decodedText) => {
+          const code = decodedText.trim().replace(/\D/g, '');
+          if (code.length >= 6) {
+            fetch("/api/scan", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionId, customerCode: code })
+            })
+            .then(r => r.json())
+            .then(res => {
+              if (res.success) {
+                document.body.innerHTML = `
+                  <div style="padding:50px 30px">
+                    <div style="font-size:80px;margin-bottom:30px;">Checkmark</div>
+                    <h2 style="font-size:28px;margin:20px 0">Карта успешно подтверждена!</h2>
+                    <p style="font-size:18px;opacity:0.9">Можете закрыть эту страницу</p>
+                  </div>`;
+              } else {
+                alert("Ошибка: " + (res.error || "Код не найден"));
+              }
+            });
+            html5QrCode.stop();
           }
         },
-        () => {}
-      ).catch(err => {
-        console.log("Камера недоступна:", err);
-      });
+        (error) => {}
+      ).catch(err => alert("Не удалось запустить камеру"));
     }
 
-    window.sendCode = function() {
-      const code = document.getElementById("manualCode").value.replace(/\D/g, "");
-      sendToServer(code);
-    };
-
-    // Автозапуск сканера
-    if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-      setTimeout(startScanner, 800);
+    // Автозапуск сканера при открытии на телефоне
+    if (/Android|iPhone/i.test(navigator.userAgent)) {
+      setTimeout(startScan, 800);
     }
-
-    // Enter = отправить
-    document.getElementById("manualCode").addEventListener("keyup", e => {
-      if (e.key === "Enter") sendCode();
-    });
   </script>
 </body>
 </html>

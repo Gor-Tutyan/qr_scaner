@@ -4,7 +4,6 @@ const QRCode = require("qrcode");
 const path = require("path");
 const crypto = require("crypto");
 const fs = require("fs");
-const os = require("os");
 const { exec } = require("child_process");
 
 const app = express();
@@ -16,7 +15,7 @@ const dbPath = isProduction ? "/tmp/database.sqlite" : path.join(__dirname, "db"
 if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 
 const db = new sqlite3.Database(dbPath);
-const sessions = new Map(); // sessionId → { scanned, customerCode, timestamp, cardDesign }
+const sessions = new Map();
 
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS clients (
@@ -27,23 +26,20 @@ db.serialize(() => {
   )`);
 });
 
-// === ГЛАВНАЯ СТРАНИЦА С QR-КОДОМ ===
 app.get("/", (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
   sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
 
-  const mobileUrl = `${req.protocol}://${req.get("host")}/mobile-scan.html?sid=${sessionId}`;
-
-  QRCode.toDataURL(mobileUrl, { width: 500, margin: 2 }, (err, qrUrl) => {
+  QRCode.toDataURL(JSON.stringify({ sessionId }), { width: 500, margin: 2 }, (err, qrUrl) => {
     if (err) return res.status(500).send("QR Error");
 
     res.send(`<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Unibank — Выдача карты</title>
+<html><head><meta charset="UTF-8"><title>Unibank</title>
 <style>
   body{font-family:Arial;background:#f8f9fa;margin:0;padding:20px;text-align:center}
-  h1{margin:40px 0 50px;font-size:32px;color:#003087;font-weight:bold}
+  h1{margin:40px 0 50px;font-size:32px;color:#003087}
   .designs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;max-width:1200px;margin:0 auto}
-  .card-btn{border-radius:20px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,0.25);cursor:pointer;transition:.3s;background:white}
+  .card-btn{border-radius:20px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,0.25);cursor:pointer;transition:.3s}
   .card-btn:hover{transform:translateY(-12px);box-shadow:0 25px 50px rgba(0,0,0,0.3)}
   .card-btn img{width:100%;display:block}
   .card-name{background:#003087;color:#fff;padding:16px;font-size:22px;font-weight:bold}
@@ -88,20 +84,15 @@ app.get("/", (req, res) => {
   });
 });
 
-// === ВЫБОР ДИЗАЙНА ===
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
-  if (sessions.has(sessionId)) {
-    sessions.get(sessionId).cardDesign = Number(design);
-  }
+  if (sessions.has(sessionId)) sessions.get(sessionId).cardDesign = Number(design);
   res.json({ok:true});
 });
 
-// === СТАТУС ДЛЯ ОПРОСА ===
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s || !s.scanned || !s.customerCode) return res.json({pending:true});
-
   db.get("SELECT * FROM clients WHERE client_code=?", [s.customerCode], (err, row) => {
     if (!row) return res.json({error:"Не найден"});
     res.json({
@@ -114,7 +105,7 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// === СКАНИРОВАНИЕ / ВВОД КОДА КЛИЕНТА ===
+// ПЕЧАТЬ ТОЛЬКО СТРОКИ С НОМЕРОМ КАРТЫ
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   const s = sessions.get(sessionId);
@@ -129,59 +120,54 @@ app.post("/api/scan", (req, res) => {
     s.customerCode = code;
     s.scanned = true;
 
-    // === ПЕЧАТЬ НА ОБЫЧНОМ A4 ПРИНТЕРЕ (ищем номер карты в .cps2 файлах) ===
     const cardNumber = (row.card_number || "").replace(/\s/g, "");
     const printsDir = path.join(__dirname, "public", "prints");
 
     fs.readdir(printsDir, (err, files) => {
-      if (err || !files || !files.length) return res.json({ success: true });
+      if (err || !files) return res.json({ success: true });
 
-      const cps2Files = files.filter(f => f.toLowerCase().endsWith(".cps2"));
+      const txtFiles = files.filter(f => f.toLowerCase().endsWith(".txt"));
+
       let foundLine = null;
 
       const checkNext = (i) => {
-        if (i >= cps2Files.length || foundLine) {
-          if (foundLine) printOnA4(foundLine);
+        if (i >= txtFiles.length || foundLine) {
+          if (foundLine) printOnlyLine(foundLine);
           return res.json({ success: true });
         }
 
-        const filePath = path.join(printsDir, cps2Files[i]);
+        const filePath = path.join(printsDir, txtFiles[i]);
         fs.readFile(filePath, "utf8", (err, content) => {
           if (err) return checkNext(i + 1);
-          const line = content.split("\n").find(l => l.includes(cardNumber));
-          if (line) foundLine = line.trim();
+
+          const lines = content.split("\n");
+          const line = lines.find(l => l.replace(/\s/g, "").includes(cardNumber));
+          if (line) {
+            foundLine = line.trim();
+          }
           checkNext(i + 1);
         });
       };
 
-      const printOnA4 = (text) => {
-        console.log("ПЕЧАТЬ НА A4:", text);
+      const printOnlyLine = (text) => {
+        const cleanText = text.trim();
+        if (!cleanText) return;
 
-        const html = `
-<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<style>
-  @page { margin: 2cm; }
-  body { font-family: Arial, sans-serif; text-align: center; padding-top: 8cm; font-size: 48px; font-weight: bold; color: #003087; }
-</style>
-</head>
-<body>
-  <div>${text.replace(/</g, "&lt;")}</div>
-  <br><br><br><br>
-  <div style="font-size:42px;color:#006400">КАРТА УСПЕШНО ВЫДАНА</div>
-</body></html>`;
+        console.log("Печатается строка:", cleanText);
 
-        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}_${crypto.randomUUID().slice(0,8)}.html`);
-        fs.writeFileSync(tempFile, html, "utf8");
+        // Создаём временный файл только с этой строкой
+        const tempFile = path.join(os.tmpdir(), `print_${Date.now()}.txt`);
+        fs.writeFileSync(tempFile, cleanText + "\n".repeat(10), "utf8");
 
         const printCmd = process.platform === "win32"
-          ? `powershell -Command "Start-Process '${tempFile}' -Verb Print"`
+          ? `notepad /p "${tempFile}"`
           : `lp "${tempFile}"`;
 
         exec(printCmd, (err) => {
-          if (err) console.error("Ошибка печати:", err);
-          else console.log("Успешно отправлено на принтер");
-          setTimeout(() => fs.unlink(tempFile, () => {}), 15000);
+          if (err) console.log("Ошибка печати строки:", err);
+          else console.log("Строка напечатана");
+          // Удаляем временный файл через 5 сек
+          setTimeout(() => fs.unlink(tempFile, () => {}), 5000);
         });
       };
 
@@ -190,39 +176,13 @@ app.post("/api/scan", (req, res) => {
   });
 });
 
-// === ВАЖНО: Динамическая отдача mobile-scan.html (чтобы sid всегда был актуальным) ===
-app.get("/mobile-scan.html", (req, res) => {
-  const sid = req.query.sid;
-  const session = sessions.get(sid);
+app.get("/mobile", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile.html")));
+app.get("/mobile-scan", (req, res) => res.sendFile(path.join(__dirname, "public", "mobile-scan.html")));
 
-  if (!sid || !session || session.scanned) {
-    const msg = !sid || !session ? "Ссылка устарела или повреждена" : "Карта уже выдана";
-    return res.send(`<h2 style="text-align:center;margin-top:20vh;color:#fff;background:#003087;height:100vh;padding-top:20vh;font-family:Arial">${msg}<br><br><button onclick="location.href='/'" style="padding:15px 30px;font-size:18px;border:none;border-radius:10px;cursor:pointer">На главную</button></h2>`);
-  }
-
-  let html = fs.readFileSync(path.join(__dirname, "public", "mobile-scan.html"), "utf8");
-  html = html.replace(
-    'const sessionId = window.SESSION_ID || null;',
-    `const sessionId = "${sid}";`
-  );
-  res.type("html").send(html);
-});
-
-// Простая заглушка для /mobile (если кто-то зайдёт напрямую)
-app.get("/mobile", (req, res) => res.redirect("/"));
-
-// === Очистка старых сессий ===
 setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of sessions) {
-    if (now - v.timestamp > 10 * 60 * 1000) { // 10 минут
-      sessions.delete(k);
-    }
-  }
-}, 5 * 60 * 1000);
+  for (const [k, v] of sessions) if (now - v.timestamp > 600000) sessions.delete(k);
+}, 300000);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Сервер запущен на порту ${PORT}`);
-  console.log(`http://localhost:${PORT}`);
-});
+app.listen(PORT, "0.0.0.0", () => console.log(`Сервер запущен: http://localhost:${PORT}`));
