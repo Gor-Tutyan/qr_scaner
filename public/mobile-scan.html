@@ -28,67 +28,48 @@
 
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <script>
-    // ЭТА СТРОКА ОБЯЗАТЕЛЬНО ДОЛЖНА БЫТЬ ИМЕННО ТАКОЙ — сервер её заменит!
+    // ЭТА СТРОКА — КЛЮЧЕВАЯ! СЕРВЕР ЕЁ ЗАМЕНЯЕТ
     const sessionId = window.SESSION_ID || null;
 
     if (!sessionId) {
-      document.body.innerHTML = `<h2 style="margin-top:100px">Загрузка...</h2>`;
-      setTimeout(() => location.reload(), 2000);
-      throw new Error("sessionId not injected");
+      document.body.innerHTML = `<h2 style="margin-top:100px">Ошибка загрузки страницы<br><br><button onclick="location.reload()" style="padding:12px 24px;font-size:18px;background:#006400;border:none;border-radius:10px;color:#fff">Обновить</button></h2>`;
+      throw "No sessionId";
     }
 
     function sendToServer(code) {
       if (!code || code.length < 4) return alert("Код слишком короткий");
-
       fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, customerCode: code })
       })
       .then(r => r.json())
-      .then(res => {
-        if (res.success) {
-          document.body.innerHTML = `
-            <h1 style="margin-top:100px">ГОТОВО!</h1>
-            <p style="font-size:26px">Карта успешно выдана</p>
-            <button onclick="location.href='/'" style="margin-top:40px;padding:16px 32px;font-size:20px;background:#006400;border:none;border-radius:50px;color:#fff;cursor:pointer">
-              Новый клиент
-            </button>`;
+      .then(d => {
+        if (d.success) {
+          document.body.innerHTML = `<h1 style="margin-top:100px">ГОТОВО!</h1><p style="font-size:26px">Карта успешно выдана</p><button onclick="location.href='/'" style="margin-top:40px;padding:16px 32px;font-size:20px;background:#006400;border:none;border-radius:50px;color:#fff">Новый клиент</button>`;
         } else {
-          alert("Ошибка: " + (res.error || "Код не найден"));
+          alert("Ошибка: " + (d.error || "Неизвестная ошибка"));
         }
       })
       .catch(() => alert("Нет связи с сервером"));
     }
 
     function startScanner() {
-      const scanner = new Html5Qrcode("reader");
-      scanner.start(
+      new Html5Qrcode("reader").start(
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
-        (text) => {
-          const code = text.replace(/\D/g, '');
-          if (code.length >= 4) {
-            sendToServer(code);
-            scanner.stop();
-          }
+        txt => {
+          const code = txt.replace(/\D/g, '');
+          if (code.length >= 4) { sendToServer(code); this.stop(); }
         },
         () => {}
       ).catch(() => console.log("Камера недоступна"));
     }
 
-    window.sendCode = function() {
-      const code = document.getElementById("manualCode").value.replace(/\D/g, "");
-      sendToServer(code);
-    };
+    window.sendCode = () => sendToServer(document.getElementById("manualCode").value.replace(/\D/g, ""));
+    document.getElementById("manualCode").addEventListener("keyup", e => e.key === "Enter" && sendCode());
 
-    if (/Android|iPhone|iPad/i.test(navigator.userAgent)) {
-      setTimeout(startScanner, 800);
-    }
-
-    document.getElementById("manualCode").addEventListener("keyup", e => {
-      if (e.key === "Enter") sendCode();
-    });
+    if (/Android|iPhone|iPad/i.test(navigator.userAgent)) setTimeout(startScanner, 800);
   </script>
 </body>
 </html>

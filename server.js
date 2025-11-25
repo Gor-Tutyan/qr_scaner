@@ -202,9 +202,9 @@ app.get("/mobile-scan.html", (req, res) => {
 
   let html = fs.readFileSync(path.join(__dirname, "public", "mobile-scan.html"), "utf8");
   html = html.replace(
-    'const sessionId = window.SESSION_ID || null;',
-    `const sessionId = "${sid}";`
-  );
+  'const sessionId = window.SESSION_ID || null;',
+  `const sessionId = "${sid}";`
+);
   res.type("html").send(html);
 });
 
