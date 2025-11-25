@@ -16,34 +16,17 @@ if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new sqlite3.Database(dbPath);
 const sessions = new Map();
 
-// ──────────────────────────────────────────────────────────────
-// ВАЖНО: где будет реально храниться файл (надёжное место)
-// ──────────────────────────────────────────────────────────────
-const REAL_RESULT_FILE = "/tmp/PrintResult.CPS2";                     // ← надёжно
-const PUBLIC_RESULT_FILE = path.join(__dirname, "public", "PrintResult.CPS2"); // ← для совместимости
+// ПУТЬ К ФАЙЛУ В GIT — ВСЕГДА ВИДЕН В РЕПОЗИТОРИИ
+const RESULT_FILE = path.join(__dirname, "public", "prints", "PrintResult.CPS2");
 
-// Создаём симлинк при старте сервера (чтобы принтер видел старый путь)
-function createSymlink() {
-  fs.unlink(PUBLIC_RESULT_FILE, () => { // удаляем старый линк/файл, если был
-    fs.symlink(REAL_RESULT_FILE, PUBLIC_RESULT_FILE, (err) => {
-      if (err) {
-        console.log("Не удалось создать симлинк public/PrintResult.CPS2 → /tmp/PrintResult.CPS2");
-        console.log("Придётся использовать прямой путь /tmp/PrintResult.CPS2");
-      } else {
-        console.log("Симлинк успешно создан: public/PrintResult.CPS2 → /tmp/PrintResult.CPS2");
-      }
-    });
-  });
+// Создаём папку и файл при старте
+fs.mkdirSync(path.dirname(RESULT_FILE), { recursive: true });
+if (!fs.existsSync(RESULT_FILE)) {
+  fs.writeFileSync(RESULT_FILE, "", "utf8");
+  console.log("Создан: public/prints/PrintResult.CPS2");
 }
 
-// Гарантируем существование /tmp файла при старте
-if (!fs.existsSync(REAL_RESULT_FILE)) {
-  fs.writeFileSync(REAL_RESULT_FILE, "", "utf8");
-  console.log("Создан пустой /tmp/PrintResult.CPS2");
-}
-createSymlink();
-
-// ──────────────────────────────────────────────────────────────
+// База данных
 db.serialize(() => {
   db.run(`CREATE TABLE IF NOT EXISTS clients (
     client_code TEXT PRIMARY KEY,
@@ -53,9 +36,7 @@ db.serialize(() => {
   )`);
 });
 
-// =======================
-
-// ======================= ГЛАВНАЯ СТРАНИЦА КАССЫ =======================
+// Главная страница кассы
 app.get("/", (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
   sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
@@ -69,17 +50,16 @@ app.get("/", (req, res) => {
 <html lang="hy"><head><meta charset="UTF-8"><title>Unibank — Քարտի տրամադրում</title>
 <style>
   body{font-family:Arial,sans-serif;background:#f8f9fa;margin:0;padding:20px;text-align:center}
-  h1{margin:40px 0 50px;font-size:32px;color:#003087;font-weight:bold}
-  .designs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;max-width:1200px;margin:0 auto}
-  .card-btn{border-radius:20px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,0.25);cursor:pointer;transition:.3s;background:white}
-  .card-btn:hover{transform:translateY(-12px);box-shadow:0 25px 50px rgba(0,0,0,0.3)}
-  .card-btn img{width:100%;display:block}
+  h1{font-size:32px;color:#003087;margin:40px 0}
+  .designs{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:30px;max-width:1200px;margin:auto}
+  .card-btn{border-radius:20px;overflow:hidden;box-shadow:0 12px 35px rgba(0,0,0,.25);cursor:pointer;transition:.3s;background:white}
+  .card-btn:hover{transform:translateY(-12px);box-shadow:0 25px 50px rgba(0,0,0,.3)}
+  .card-btn img{width:100%}
   .card-name{background:#003087;color:#fff;padding:16px;font-size:22px;font-weight:bold}
-  #qr-area{display:none;margin:50px auto;padding:40px;background:white;border-radius:25px;box-shadow:0 15px 50px rgba(0,0,0,0.2);max-width:650px}
-  button{background:#003087;color:white;padding:16px 40px;font-size:20px;border:none;border-radius:15px;cursor:pointer;margin:15px}
+  #qr-area{display:none;margin:50px auto;padding:40px;background:white;border-radius:25px;box-shadow:0 15px 50px rgba(0,0,0,.2);max-width:650px}
 </style></head><body>
 
-<h1>Ընտրեք հաճախորդի քարտի դիզայնը</h1>
+<h1>Ընտրեք քարտի դիզայնը</h1>
 <div class="designs">
   <div class="card-btn" onclick="choose(1)"><img src="/cards/card1.png"><div class="card-name">Դիզայն 1</div></div>
   <div class="card-btn" onclick="choose(2)"><img src="/cards/card2.png"><div class="card-name">Դիզայն 2</div></div>
@@ -89,122 +69,141 @@ app.get("/", (req, res) => {
 
 <div id="qr-area">
   <h2>Ցուցադրեք QR-կոդը հաճախորդին</h2>
-  <img src="${qrUrl}" style="width:100%;max-width:420px;margin:20px">
-  <p><strong>Ընտրված դիզայն՝</strong> <span id="sel">-</span></p>
-  <div id="status">Սպասում ենք հաճախորդի հաստատմանը...</div>
+  <img src="${qrUrl}" style="max-width:420px"><br><br>
+  <strong>Դիզայն՝ <span id="sel">-</span></strong><br><br>
   <button onclick="location.reload()">Նոր հաճախորդ</button>
 </div>
 
 <script>
   const sid = "${sessionId}";
- function choose(d) {
-   fetch("/api/set-design", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:sid,design:d})});
-   document.querySelector(".designs").style.display="none";
-   document.getElementById("qr-area").style.display="block";
-   document.getElementById("sel").textContent = d;
-   setInterval(()=>fetch("/api/status/"+sid).then(r=>r.json()).then(data=>{
-     if(data.success){
-       const name = (data.first_name + " " + data.last_name).toUpperCase();
-       const number = (data.card_number || "4111111111111111");
-       const design = data.design || 1;
-       location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+encodeURIComponent(number)+"&design="+design;
-     }
-   }), 1500);
- }
+  function choose(d) {
+    fetch("/api/set-design", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({sessionId:sid,design:d})});
+    document.querySelector(".designs").style.display="none";
+    document.getElementById("qr-area").style.display="block";
+    document.getElementById("sel").textContent = d;
+    const timer = setInterval(()=> {
+      fetch("/api/status/"+sid).then(r=>r.json()).then(data=>{
+        if(data.success){
+          clearInterval(timer);
+          const name = (data.first_name + " " + data.last_name).toUpperCase();
+          const number = data.card_number || "4111111111111111111";
+          const design = data.design || 1;
+          location.href = "/card-result.html?name="+encodeURIComponent(name)+"&number="+number+"&design="+design;
+        }
+      });
+    }, 1500);
+  }
 </script>
 </body></html>`);
   });
 });
 
-// Сохранение выбранного дизайна
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
   if (sessions.has(sessionId)) sessions.get(sessionId).cardDesign = Number(design);
   res.json({ ok: true });
 });
 
-// Статус для кассы (после подтверждения клиентом)
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
 
   db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
-    if (!row) return res.json({ error: "Հաճախորդը չի գտնվել" });
+    if (err || !row) return res.json({ error: "Not found" });
     res.json({
       success: true,
       first_name: row.first_name || "ԱՆՈՒՆ",
-      last_name: row.last_name || "ԱԶԳԱՆՈՒՆ",
+      last_name: row.last_name || "ԱԶԳԱՆՈ",
       card_number: row.card_number || "4111111111111111",
       design: s.cardDesign || 1
     });
   });
 });
 
-// ======================= СКАНИРОВАНИЕ + ГАРАНТИРОВАННАЯ ЗАПИСЬ =======================
+// ГЛАВНОЕ: ЗАПИСЬ В GIT + ОРИГИНАЛЬНАЯ СТРОКА
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
-  if (!sessionId || !customerCode) return res.json({ error: "Տվյալներ չկան" });
+  if (!sessionId || !customerCode) return res.json({ error: "Нет данных" });
 
-  const s = sessions.get(sessionId);
-  if (!s) return res.json({ error: "Սեսիան ավարտվել է" });
+  const session = sessions.get(sessionId);
+  if (!session) return res.json({ error: "Сессия истекла" });
 
   const code = customerCode.toString().trim().replace(/\D/g, "");
   if (code.length < 4) return res.json({ error: "Կոդը շատ կարճ է" });
 
   db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
     if (err || !row) {
-      console.log("Հաճախորդը ՉԻ գտնվել կոդով:", code);
+      console.log("Клиент не найден:", code);
       return res.json({ error: "Հաճախորդը չի գտնվել" });
     }
 
-    // Отмечаем успешное подтверждение
-    s.scanned = true;
-    s.customerCode = code;
+    session.scanned = true;
+    session.customerCode = code;
 
-    const fullName = `${row.first_name || "ԱՆՈՒՆ"} ${row.last_name || "ԱԶԳԱՆՈՒՆ"}`.trim();
-    const cleanCardNumber = (row.card_number || "4111111111111111").replace(/\s/g, "");
-    const timestamp = new Date().toISOString().slice(0, 19).replace("T", " ");
-    const line = `${cleanCardNumber}\t${fullName}\t${timestamp}`;
+    const cardNumber = (row.card_number || "").replace(/\s/g, "").trim();
 
-    console.log(`ՀԱՋՈՂՈՒԹՅՈՒՆ! Քարտը տրամադրվել է → ${fullName} | ${cleanCardNumber}`);
+    let lineToWrite = null;
 
-    // Записываем в /tmp (надёжно) + обновляем симлинк
-    fs.appendFile(REAL_RESULT_FILE, line + "\n", "utf8", (err) => {
+    // Ищем оригинальную строку в .cps2 файлах
+    const printsDir = path.join(__dirname, "public", "prints");
+    try {
+      const files = fs.readdirSync(printsDir);
+      for (const file of files) {
+        if (!file.toLowerCase().endsWith(".cps2")) continue;
+        const content = fs.readFileSync(path.join(printsDir, file), "utf8");
+        const foundLine = content.split("\n").find(l => l.includes(cardNumber) && l.trim() !== "");
+        if (foundLine) {
+          lineToWrite = foundLine.trim();
+          console.log(`Найдена оригинальная строка в ${file}: ${lineToWrite}`);
+          break;
+        }
+      }
+    } catch (e) {
+      console.log("Папка prints недоступна или пуста");
+    }
+
+    // Если не нашли — создаём красивую строку
+    if (!lineToWrite) {
+      const name = `${row.first_name || "ԱՆՈՒՆ"} ${row.last_name || "ԱԶԳԱՆՈՒՆ"}`.trim();
+      const date = new Date().toISOString().slice(0,19).replace("T", " ");
+      lineToWrite = `${cardNumber}\t${name}\t${date}\tISSUED`;
+    }
+
+    // ЗАПИСЫВАЕМ ПРЯМО В GIT
+    fs.appendFile(RESULT_FILE, lineToWrite + "\n", "utf8", (err) => {
       if (err) {
-        console.error("ՍԽԱԼ գրելիս /tmp/PrintResult.CPS2:", err.message);
+        console.error("Ошибка записи в Git:", err.message);
         return res.json({ success: true, saved: false });
       }
 
-      console.log("→ Записано в PrintResult.CPS2:", line);
-      createSymlink(); // обновляем симлинк на случай, если он сломался
+      console.log("УСПЕШНО! Добавлено в Git → public/prints/PrintResult.CPS2");
+      console.log("→", lineToWrite);
 
-      res.json({ 
-        success: true, 
-        saved: true, 
-        file: "PrintResult.CPS2",
-        line: line
+      res.json({
+        success: true,
+        saved: true,
+        line: lineToWrite,
+        file: "prints/PrintResult.CPS2"
       });
     });
   });
 });
 
-// Мобильные страницы
 app.get("/mobile-scan.html", (req, res) => {
   const sid = req.query.sid;
   if (sid && /^[a-z0-9]{32}$/.test(sid)) {
     res.sendFile(path.join(__dirname, "public", "mobile-scan.html"));
   } else {
-    res.status(400).send("Սխալ sid");
+    res.status(400).send("Неверный sid");
   }
 });
 
 app.get("/mobile", (req, res) => res.redirect("/"));
 
-// Прямой доступ к файлу (на всякий случай)
+// Доступ к файлу через браузер
 app.get("/PrintResult.CPS2", (req, res) => {
-  res.sendFile(REAL_RESULT_FILE, (err) => {
-    if (err) res.status(404).send("Файл ещё не создан");
-  });
+  res.type("text/plain; charset=utf-8");
+  res.sendFile(RESULT_FILE);
 });
 
 // Очистка старых сессий
@@ -217,8 +216,7 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("Unibank սերվերը գործարկվել է!");
-  console.log(`http://localhost:${PORT}`);
-  console.log(`Файл результата: ${REAL_RESULT_FILE}`);
-  console.log(`Публичный путь: /PrintResult.CPS2`);
+  console.log("Unibank сервер запущен!");
+  console.log(`PrintResult.CPS2 → https://твой-сайт.onrender.com/PrintResult.CPS2`);
+  console.log(`Файл в Git → public/prints/PrintResult.CPS2`);
 });
