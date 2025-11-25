@@ -55,25 +55,255 @@ app.get("/", async (req, res) => {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Unibank — Մոմենտալ քարտ</title>
-
 <style>
-  body{font-family:system-ui,Arial,sans-serif;background:#f8f9fa;color:#333;margin:0;padding:20px;text-align:center}
-  .btn-big{background:#003087;color:white;border:none;border-radius:20px;padding:30px;font-size:28px;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,0.2);width:90%;max-width:500px;margin:80px auto;display:block}
-  .btn-big:hover{background:#00205b}
-  .step{display:none;background:white;border-radius:20px;padding:30px;margin:20px auto;box-shadow:0 10px 40px rgba(0,0,0,0.1);max-width:1000px}
-  h1,h2{color:#003087;margin:20px 0}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
-  .card{border-radius:16px;overflow:hidden;box-shadow:0 8px 25px rgba(0,0,0,0.15);cursor:pointer;transition:.3s;background:white}
-  .card:hover{transform:translateY(-10px)}
-  .card img{width:100%;height:150px;object-fit:cover}
-  .card div{padding:16px;background:#003087;color:white;font-weight:bold}
-  .selected{border:5px solid #003087}
-  .currency-grid{display:flex;flex-wrap:wrap;gap:15px;justify-content:center;margin:40px 0}
-  .currency-btn{background:#003087;color:white;padding:16px 32px;border-radius:12px;font-size:20px;cursor:pointer}
-  .currency-btn.selected{background:#00205b}
-  #qr-area{display:none;background:white;padding:50px;border-radius:20px;box-shadow:0 15px 50px rgba(0,0,0,0.2);max-width:600px;margin:40px auto}
-</style>
+body {
+  font-family: system-ui, Arial, sans-serif;
+  background: #f8f9fa;
+  color: #333;
+  margin: 0;
+  padding: 15px 20px;
+  text-align: center;
+}
 
+/* Главные кнопки */
+.btn-big {
+  background: #003087;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  width: auto;
+  max-width: 90%;
+  margin: 20px auto;
+  display: inline-block;
+  transition: 0.3s;
+}
+.btn-big:hover { background: #00205b; transform: translateY(-2px); }
+
+/* Шаги */
+.step {
+  display: none;
+  background: white;
+  border-radius: 18px;
+  padding: 30px;
+  margin: 20px auto;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+  max-width: 960px;
+}
+
+/* Заголовки */
+h1 { color: #003087; font-size: 29px; margin: 10px 0 28px; font-weight: 700; }
+h2 { color: #003087; font-size: 22px; margin: 35px 0 15px; }
+
+/* Бренды */
+#brands .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 18px; }
+#brands .card {
+  height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
+  cursor: pointer;
+  transition: .3s;
+}
+#brands .card:hover { transform: translateY(-8px); }
+#brands .card img { max-height: 55px; width: auto; }
+#brands .card div { margin-top: 8px; font-size: 17px; color: #003087; font-weight: 600; }
+
+/* Продукты */
+#products .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+#products .card {
+  height: 150px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  cursor: pointer;
+  transition: transform 0.3s, box-shadow 0.3s;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end; /* кнопки внизу карточки */
+  background: white;
+}
+
+#products .card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 28px rgba(0,0,0,0.18);
+}
+
+#products .card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Контейнер кнопок на карточке продуктов */
+#products .card .button-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+}
+
+/* Кнопки внутри карточки */
+#products .card .button-row div {
+  background: #003087;
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  text-align: center;
+  cursor: pointer;
+  min-width: 60px;
+  max-width: 120px;
+  width: auto;
+  transition: background 0.3s, transform 0.2s;
+}
+
+#products .card .button-row div:hover {
+  background: #001f5f;
+  transform: translateY(-1px);
+}
+
+/* Дизайны */
+#designs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+}
+
+#designs .card {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 25px rgba(0,0,0,0.14);
+  transition: transform 0.3s, box-shadow 0.3s;
+  cursor: pointer;
+  background: white;
+  border: 2px solid transparent;
+  width: 180px;
+  height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+}
+
+#designs .card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px rgba(0,0,0,0.2);
+}
+
+#designs .card.selected {
+  border: 2px solid #003087;
+  transform: scale(1.02);
+}
+
+#designs .card img {
+  width: 200px;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+  background-color: #f9f9f9;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+
+#designs .card div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: #003087;
+}
+
+#designs .card div small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: #666;
+}
+
+/* Валюты */
+.currency-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: center;
+  margin: 30px 0;
+}
+.currency-btn {
+  background: #003087;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  width: auto;
+  min-width: 80px;
+  max-width: 140px;
+  transition: 0.3s;
+}
+.currency-btn:hover { background: #0040b0; }
+.currency-btn.selected { 
+  background: #00205b; 
+  border: 2px solid #ffd700; 
+  box-shadow: 0 0 15px rgba(255,215,0,0.4); 
+}
+
+/* Подтверждение */
+button[onclick="confirmChoice()"] {
+  padding: 8px 20px;
+  font-size: 16px;
+  background: #003087;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  width: auto;
+  min-width: 100px;
+  max-width: 180px;
+  transition: 0.3s;
+}
+button[onclick="confirmChoice()"]:hover { background: #00205b; }
+
+/* QR и информация */
+#qr-area {
+  display: none;
+  background: white;
+  padding: 40px;
+  border-radius: 18px;
+  box-shadow: 0 15px 50px rgba(0,0,0,0.18);
+  max-width: 560px;
+  margin: 40px auto;
+}
+#info {
+  background: #eef5ff;
+  padding: 18px;
+  border-radius: 12px;
+  border-left: 5px solid #003087;
+  font-size: 18px;
+  line-height: 1.6;
+}
+</style>
 </head>
 <body>
 
@@ -135,7 +365,7 @@ app.get("/", async (req, res) => {
       Object.keys(b.products).map(p => {
         return \`
           <div class="card" onclick="chooseProduct('\${p}')">
-            <div style="padding:60px 20px;font-size:24px">\${b.products[p].name}</div>
+            <div style="padding:20px 20px;font-size:12px">\${b.products[p].name}</div>
           </div>
         \`;
       }).join("");

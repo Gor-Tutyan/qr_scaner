@@ -66,17 +66,17 @@
   },
 
   "designs": {
-    "1":  { "name": "Visa Digital 1",     "image": "/cards/d-unibank-digitalnew01.png", "designCode": "VDIGIT1" },
-    "2":  { "name": "Visa Digital 2",     "image": "/cards/d-unibank-digitalnew02.png", "designCode": "VDIGIT2" },
-    "3":  { "name": "Visa Digital 3",     "image": "/cards/d-unibank-digitalnew03.png", "designCode": "VDIGIT3" },
-    "4":  { "name": "Visa Digital 4",     "image": "/cards/d-unibank-digitalnew04.png", "designCode": "VDIGIT4" },
-    "5":  { "name": "Visa Classic Orig",  "image": "/cards/visa-classic.png",           "designCode": "VCLASSIC" },
-    "6":  { "name": "Visa Gold",          "image": "/cards/visa-gold.png",              "designCode": "VGOLD2" },
-    "7":  { "name": "VISA SIGNATURE",     "image": "/cards/visa-signature.png",         "designCode": "VSIGN1" },
-    "8":  { "name": "VISA Infinite",      "image": "/cards/visa-infinite.png",          "designCode": "VINFIN2" },
-    "9":  { "name": "MC Standard",        "image": "/cards/mc-standard.jpg",            "designCode": "MCSTD1" },
-    "10": { "name": "MC GOLD",            "image": "/cards/mc-gold.png",                "designCode": "MCGOLD1" },
-    "11": { "name": "MC World Elite",     "image": "/cards/mc-world-elite.png",         "designCode": "MCWELITE" },
-    "12": { "name": "ArCa Classic",       "image": "/cards/arca.png",                   "designCode": "ARCA1" }
+    "1":  { "name": "Visa Digital 1", "image": "/cards/D-UNIBANK-DIGITALNEW01.png", "designCode": "VDIGIT1" },
+    "2":  { "name": "Visa Digital 2", "image": "/cards/D-UNIBANK-DIGITALNEW02.png", "designCode": "VDIGIT2" },
+    "3":  { "name": "Visa Digital 3", "image": "/cards/D-UNIBANK-DIGITALNEW03.png", "designCode": "VDIGIT3" },
+    "4":  { "name": "Visa Digital 4", "image": "/cards/D-UNIBANK-DIGITALNEW04.png", "designCode": "VDIGIT4" },
+    "5":  { "name": "Visa Classic Orig", "image": "/cards/Visa Classic.png", "designCode": "VCLASSIC" },
+    "6":  { "name": "Visa Gold", "image": "/cards/VISA GOLD.png", "designCode": "VGOLD2" },
+    "7":  { "name": "VISA SIGNATURE", "image": "/cards/VISA_SIGNATURE.png", "designCode": "VSIGN1" },
+    "8":  { "name": "VISA Infinite", "image": "/cards/VISA_INFINITE.png", "designCode": "VINFIN2" },
+    "9":  { "name": "MC Standard", "image": "/cards/MC Standard.png", "designCode": "MCSTD1" },
+    "10": { "name": "MC GOLD", "image": "/cards/MC GOLD.png", "designCode": "MCGOLD" },
+    "11": { "name": "MC World Elite", "image": "/cards/MC World Elite.png", "designCode": "MCWELITE" },
+    "12": { "name": "ArCa Classic", "image": "/cards/ARCA.png", "designCode": "ARCA1" }
   }
 }
