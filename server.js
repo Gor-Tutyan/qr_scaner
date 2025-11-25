@@ -32,8 +32,7 @@ app.get("/", (req, res) => {
   QRCode.toDataURL(JSON.stringify({ sessionId }), { width: 500, margin: 2 }, (err, qrUrl) => {
     if (err) return res.status(500).send("QR Error");
 
-    const html = `
-<!DOCTYPE html>
+    res.send(`<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
@@ -49,8 +48,7 @@ app.get("/", (req, res) => {
     .card-name{background:#003087;color:#fff;padding:16px;font-size:22px;font-weight:bold}
     #qr-area{display:none;margin:50px auto;padding:40px;background:white;border-radius:25px;box-shadow:0 15px 50px rgba(0,0,0,0.2);max-width:650px}
     #qr-img{background:white;padding:25px;border-radius:18px;display:inline-block;box-shadow:0 8px 25px rgba(0,0,0,0.15)}
-    button{background:#003087;color:white;padding:16px 40px;font-size:20px;border:none;border-radius:15px;cursor:pointer;margin:15px;box-shadow:0 8px 20px rgba(0,0,0,0.2)}
-    button:hover{background:#00205b}
+    button{background:#003087;color:white;padding:16px 40px;font-size:20px;border:none;border-radius:15px;cursor:pointer;margin:15px}
   </style>
 </head>
 <body>
@@ -80,10 +78,9 @@ app.get("/", (req, res) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: sid, design })
       });
-
       document.querySelector(".designs").style.display = "none";
       document.getElementById("qr-area").style.display = "block";
-      document.getElementById("sel").textContent(folder) = design;
+      document.getElementById("sel").textContent = design;
       startPolling();
     }
 
@@ -99,62 +96,45 @@ app.get("/", (req, res) => {
               const name = (data.first_name + " " + data.last_name).toUpperCase();
               const design = data.design || 1;
 
-              document.getElementById("status").innerHTML = \`
-                <div style="margin:40px auto;max-width:680px;padding:20px;background:linear-gradient(135deg,#f8f9fa,#e3f2fd);border-radius:30px;box-shadow:0 30px 80px rgba(0,0,0,0.4)">
-                  <div style="position:relative;width:100%;padding-bottom:63.5%;border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.5), inset 0 0 30px rgba(255,255,255,0.2);background:#000">
-                    <canvas id="finalCard" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas>
-                    <div style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#0f0;padding:12px 35px;border-radius:50px;font-weight:bold;font-size:19px;letter-spacing:3px;box-shadow:0 5px 25px rgba(0,255,0,0.4)">
-                      КАРТА ВЫДАНА
-                    </div>
-                  </div>
-                  <div style="margin-top:30px;text-align:center;color:#003087;font-size:26px;font-weight:bold">
-                    \${name}
-                    <br><span style="font-family:'Courier New',monospace;letter-spacing:5px;color:#000;font-size:24px">\${number}</span>
-                  </div>
-                </div>
+              document.getElementById("status").innerHTML = 
+                '<div style="margin:40px auto;max-width:680px;padding:20px;background:linear-gradient(135deg,#f8f9fa,#e3f2fd);border-radius:30px;box-shadow:0 30px 80px rgba(0,0,0,0.4)">' +
+                  '<div style="position:relative;width:100%;padding-bottom:63.5%;border-radius:20px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.5), inset 0 0 30px rgba(255,255,255,0.2)">' +
+                    '<canvas id="finalCard" style="position:absolute;top:0;left:0;width:100%;height:100%"></canvas>' +
+                    '<div style="position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.7);color:#0f0;padding:12px 35px;border-radius:50px;font-weight:bold;font-size:19px;letter-spacing:3px;box-shadow:0 5px 25px rgba(0,255,0,0.4)">КАРТА ВЫДАНА</div>' +
+                  '</div>' +
+                  '<div style="margin-top:30px;text-align:center;color:#003087;font-size:26px;font-weight:bold">' + name + '<br><span style="font-family:\'Courier New\',monospace;letter-spacing:5px;color:#000;font-size:24px">' + number + '</span></div>' +
+                '</div>' +
 
-                <script>
-                  const canvas = document.getElementById("finalCard");
-                  const ctx = canvas.getContext("2d");
-                  const img = new Image();
-                  img.onload = function() {
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                    // Тёмная полоса снизу
-                    ctx.fillStyle = "rgba(0,0,0,0.65)";
-                    ctx.fillRect(0, canvas.height - 150, canvas.width, 150);
-
-                    // Имя держателя
-                    ctx.font = "bold 54px Arial";
-                    ctx.strokeStyle = "#000000";
-                    ctx.lineWidth = 9;
-                    ctx.fillStyle = "#ffffff";
-                    ctx.textAlign = "left";
-                    ctx.strokeText("\${name}", 70, canvas.height - 55);
-                    ctx.fillText("\${name}", 70, canvas.height - 55);
-
-                    // Номер карты
-                    ctx.font = "bold 58px 'Courier New', monospace";
-                    ctx.textAlign = "center";
-                    ctx.strokeText("\${number}", canvas.width/2, canvas.height - 15);
-                    ctx.fillText("\${number}", canvas.width/2, canvas.height - 15);
-                  };
-                  img.src = "/cards/card\${design}.png?t=\${Date.now()}";
-                <\/script>
-              \`;
+                '<script>' +
+                  'const canvas = document.getElementById("finalCard");' +
+                  'const ctx = canvas.getContext("2d");' +
+                  'const img = new Image();' +
+                  'img.onload = function() {' +
+                    'ctx.drawImage(img, 0, 0, canvas.width, canvas.height);' +
+                    'ctx.fillStyle = "rgba(0,0,0,0.65)";' +
+                    'ctx.fillRect(0, canvas.height - 150, canvas.width, 150);' +
+                    'ctx.font = "bold 54px Arial";' +
+                    'ctx.strokeStyle = "#000"; ctx.lineWidth = 9; ctx.fillStyle = "#fff"; ctx.textAlign = "left";' +
+                    'ctx.strokeText("' + name + '", 70, canvas.height - 55);' +
+                    'ctx.fillText("' + name + '", 70, canvas.height - 55);' +
+                    'ctx.font = "bold 58px \'Courier New\', monospace";' +
+                    'ctx.textAlign = "center";' +
+                    'ctx.strokeText("' + number + '", canvas.width/2, canvas.height - 15);' +
+                    'ctx.fillText("' + number + '", canvas.width/2, canvas.height - 15);' +
+                  '};' +
+                  'img.src = "/cards/card' + design + '.png?t=' + Date.now() + '";' +
+                '<\/script>';
             }
           });
       }, 1800);
     }
   </script>
 </body>
-</html>`;
-
-    res.send(html);
+</html>`);
   });
 });
 
-// === API ===
+// API
 app.post("/api/set-design", (req, res) => {
   const { sessionId, design } = req.body;
   const s = sessions.get(sessionId);
@@ -165,7 +145,6 @@ app.post("/api/set-design", (req, res) => {
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
-
   db.get("SELECT * FROM clients WHERE client_code=?", [s.customerCode], (err, row) => {
     if (err || !row) return res.json({ error: "Не найден" });
     res.json({
@@ -182,18 +161,11 @@ app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   const s = sessions.get(sessionId);
   if (!s) return res.json({ error: "Сессия не найдена" });
-
   const code = (customerCode + "").trim().replace(/\D/g, "");
   if (!code) return res.json({ error: "Код пустой" });
-
   db.get("SELECT * FROM clients WHERE client_code=?", [code], (err, row) => {
-    if (row) {
-      s.customerCode = code;
-      s.scanned = true;
-      res.json({ success: true, data: row });
-    } else {
-      res.json({ error: "Клиент не найден" });
-    }
+    if (row) { s.customerCode = code; s.scanned = true; res.json({ success: true }); }
+    else res.json({ error: "Клиент не найден" });
   });
 });
 
@@ -206,4 +178,4 @@ setInterval(() => {
 }, 300000);
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => console.log(`Сервер запущен: http://localhost:${PORT}`));
+app.listen(PORT, "0.0.0.0", () => console.log(`Сервер запущен на порту ${PORT}`));
