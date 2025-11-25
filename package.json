@@ -3,13 +3,13 @@
     "version": "1.0.0",
     "main": "server.js",
     "dependencies": {
-      "express": "^4.21.2",
-      "sqlite3": "^5.1.7",
-      "qrcode": "^1.5.4"
+        "express": "^4.21.2",
+        "qrcode": "^1.5.4",
+        "sqlite3": "^5.1.7"
     },
     "scripts": {
-    "start": "node server.js",
-    "seed": "node seed-db.js",
-    "dev": "node server.js"
-  }
-  }
+        "start": "node server.js",
+        "seed": "node seed-db.js",
+        "dev": "node server.js"
+    }
+}
