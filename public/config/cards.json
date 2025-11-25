@@ -9,14 +9,24 @@
           "designs": [1, 2, 3, 4],
           "currencies": ["AMD", "USD", "EUR"]
         },
+        "classic Original": {
+          "name": "Classic Original",
+          "designs": [5],
+          "currencies": ["AMD", "USD"]
+        },
         "gold": {
           "name": "Gold",
-          "designs": [5, 6],
+          "designs": [6],
           "currencies": ["AMD", "USD"]
+        },
+        "signature": {
+          "name": "Signature",
+          "designs": [7],
+          "currencies": ["AMD"]
         },
         "infinite": {
           "name": "Infinite",
-          "designs": [7, 8],
+          "designs": [8],
           "currencies": ["AMD"]
         }
       }
@@ -27,12 +37,17 @@
       "products": {
         "standard": {
           "name": "Standard",
-          "designs": [9, 10],
+          "designs": [9],
           "currencies": ["AMD", "USD"]
         },
-        "platinum": {
-          "name": "Platinum",
-          "designs": [11, 12],
+        "gold": {
+          "name": "MC Gold",
+          "designs": [10],
+          "currencies": ["AMD", "USD", "EUR"]
+        },
+        "World Elite": {
+          "name": "MC World Elite",
+          "designs": [11],
           "currencies": ["AMD", "USD", "EUR"]
         }
       }
@@ -40,16 +55,11 @@
     "arca": {
       "name": {
         "name": "ArCa",
-        "icon": "/icons/arca.png",
+        "icon": "/icons/arca_logo.png",
         "products": {
           "classic": {
             "name": "Classic",
-            "designs": [14, 15],
-            "currencies": ["AMD"]
-          },
-          "gold": {
-            "name": "Gold",
-            "designs": [16],
+            "designs": [12],
             "currencies": ["AMD"]
           }
         }
@@ -58,20 +68,17 @@
   },
 
   "designs": {
-    "1":  { "name": "Կարմիր ալիք",      "image": "/cards/visa-classic-1.jpg", "designCode": "VDIGIT1" },
-    "2":  { "name": "Կապույտ երկնք",     "image": "/cards/visa-classic-2.jpg", "designCode": "VDIGIT2" },
-    "3":  { "name": "Սև & ոսկի",        "image": "/cards/visa-classic-3.jpg", "designCode": "VDIGIT3" },
-    "4":  { "name": "Կանաչ անտառ",       "image": "/cards/visa-classic-4.jpg", "designCode": "VDIGIT4" },
-    "5":  { "name": "Ոսկե շերտեր",       "image": "/cards/visa-gold-1.jpg",    "designCode": "VGOLD1" },
-    "6":  { "name": "Մետալիկ",          "image": "/cards/visa-gold-2.jpg",    "designCode": "VGOLD2" },
-    "7":  { "name": "Infinite Black",    "image": "/cards/visa-infinite-1.jpg","designCode": "VINFIN1" },
-    "8":  { "name": "Infinite Silver",   "image": "/cards/visa-infinite-2.jpg","designCode": "VINFIN2" },
-    "9":  { "name": "Standard Red",      "image": "/cards/mc-standard-1.jpg",  "designCode": "MCSTD1" },
-    "10": { "name": "Standard Blue",     "image": "/cards/mc-standard-2.jpg",  "designCode": "MCSTD2" },
-    "11": { "name": "Platinum Grey",     "image": "/cards/mc-platinum-1.jpg",  "designCode": "MCPLAT1" },
-    "12": { "name": "Platinum Gold",     "image": "/cards/mc-platinum-2.jpg",  "designCode": "MCPLAT2" },
-    "14": { "name": "ArCa Classic",      "image": "/cards/arca-classic-1.jpg", "designCode": "ARCA1" },
-    "15": { "name": "ArCa Հայաստան",    "image": "/cards/arca-classic-2.jpg", "designCode": "ARCA2" },
-    "16": { "name": "ArCa Gold",         "image": "/cards/arca-gold-1.jpg",    "designCode": "ARCAGOLD" }
+    "1":  { "name": "Visa Digital 1",      "image": "/cards/D-UNIBANK-DIGITALNEW01.png", "designCode": "VDIGIT1" },
+    "2":  { "name": "Visa Digital 2",     "image": "/cards/D-UNIBANK-DIGITALNEW02.png", "designCode": "VDIGIT2" },
+    "3":  { "name": "Visa Digital 3",        "image": "/cards/D-UNIBANK-DIGITALNEW03.png", "designCode": "VDIGIT3" },
+    "4":  { "name": "Visa Digital 4",       "image": "/cards/D-UNIBANK-DIGITALNEW04.png", "designCode": "VDIGIT4" },
+    "5":  { "name": "Visa Classic Orig",       "image": "/cards/Visa Classic.png",    "designCode": "VGOLD1" },
+    "6":  { "name": "Visa Gold",          "image": "/cards/VISA GOLD.png",    "designCode": "VGOLD2" },
+    "7":  { "name": "VISA SIGNATURE",    "image": "/cards/VISA_SIGNATURE.png","designCode": "VINFIN1" },
+    "8":  { "name": "VISA Infinite",      "image": "/cards/VISA_INFINITE.png",  "designCode": "VINFIN2" }, 
+    "9":  { "name": "MC Standard",      "image": "/cards/mc-standard-1.jpg",  "designCode": "MCSTD1" },
+    "10":  { "name": "MC GOLD",         "image": "/cards/MC GOLD.png",  "designCode": "MCSTD1" },
+    "11":  { "name": "MC World Elite",  "image": "/cards/MC World Elite.png",  "designCode": "MCSTD1" },
+    "12": { "name": "ArCa Classic",     "image": "/cards/ARCA.png", "designCode": "ARCA1" }
   }
 }
