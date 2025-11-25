@@ -81,7 +81,7 @@ app.get("/", (req, res) => {
   <div class="designs">
     ${[1,2,3,4].map(i => `
       <div class="card-btn" onclick="choose(${i})">
-        <img src="/cards/card${i}.jpg" alt="Дизайн ${i}">
+        <img src="/cards/card${i}.png" alt="Дизайн ${i}">
         <div class="card-name">Дизайн ${i}</div>
       </div>
     `).join('')}
@@ -124,7 +124,7 @@ app.get("/", (req, res) => {
               clearInterval(interval);
               document.getElementById("status").innerHTML = 
                 '<div class="result-card">' +
-                  '<img src="/cards/card' + (data.design || 1) + '.jpg" alt="Карта клиента">' +
+                  '<img src="/cards/card' + (data.design || 1) + '.png" alt="Карта клиента">' +
                   '<div class="info">' +
                     '<div class="name">' + data.first_name + ' ' + data.last_name + '</div>' +
                     '<div class="number">' + 
