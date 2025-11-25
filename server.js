@@ -27,7 +27,7 @@ db.serialize(() => {
   )`);
 });
 
-aapp.get("/", (req, res) => {
+app.get("/", (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
   sessions.set(sessionId, { scanned: false, customerCode: null, timestamp: Date.now(), cardDesign: null });
 
