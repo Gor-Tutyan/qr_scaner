@@ -503,56 +503,91 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// === API: обработка сканирования ===
+// === API: обработка сканирования (С ЖЁСТКОЙ ПРОВЕРКОЙ НАЛИЧИЯ КАРТЫ В .CPS2) ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
-  if (!sessionId || !customerCode) return res.json({ success: false });
+  if (!sessionId || !customerCode) {
+    return res.json({ success: false, error: "Нет данных" });
+  }
 
   const session = sessions.get(sessionId);
-  if (!session) return res.json({ success: false });
+  if (!session) {
+    return res.json({ success: false, error: "Сессия истекла или неверная" });
+  }
 
   const code = customerCode.toString().trim().replace(/\D/g, "");
-  if (code.length < 4) return res.json({ success: false });
+  if (code.length < 4) {
+    return res.json({ success: false, error: "Неверный код клиента" });
+  }
 
+  // 1. Ищем клиента в базе
   db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
-    if (err || !row) return res.json({ success: false });
-
-    session.scanned = true;
-    session.customerCode = code;
+    if (err || !row) {
+      return res.json({ success: false, error: "Клиент не найден в базе" });
+    }
 
     const cardNumber = (row.card_number || "").replace(/\s/g, "").trim();
-    const sel = session.selection;
-    let line = null;
+    if (!cardNumber) {
+      return res.json({ success: false, error: "У клиента нет номера карты" });
+    }
 
+    // 2. Проверяем — есть ли этот номер хотя бы в одном .CPS2 файле в /prints
+    let cardFoundInPrintFiles = false;
     try {
-      const files = fs.readdirSync(path.join(__dirname, "public", "prints"));
+      const printsDir = path.join(__dirname, "public", "prints");
+      const files = fs.readdirSync(printsDir);
+
       for (const file of files) {
         if (!file.toLowerCase().endsWith(".cps2")) continue;
-        const content = fs.readFileSync(path.join(__dirname, "public", "prints", file), "utf8");
-        const found = content.split("\n").find(l => l.includes(cardNumber) && l.trim());
-        if (found) {
-          line = found.trim();
+
+        const content = fs.readFileSync(path.join(printsDir, file), "utf8");
+        if (content.includes(cardNumber)) {
+          cardFoundInPrintFiles = true;
           break;
         }
       }
-    } catch (e) {}
-
-    if (!line) {
-      const name = `${row.first_name || "ԱՆՈՒՆ"} ${row.last_name || "ԱԶԳԱՆՈՒՆ"}`.trim();
-      const now = new Date().toISOString().slice(0,19).replace("T", " ");
-      const design = sel?.designCode || "UNKNOWN";
-      const cur = sel?.currency || "AMD";
-
-      line = `${cardNumber}\t${name}\t${now}\t${design}\t${cur}\tISSUED`;
+    } catch (e) {
+      console.error("Ошибка чтения папки prints:", e);
+      return res.json({ success: false, error: "Ошибка проверки готовности карты" });
     }
 
+    // КЛЮЧЕВОЕ УСЛОВИЕ:
+    if (!cardFoundInPrintFiles) {
+      return res.json({
+        success: false,
+        error: "Քարտը դեռ պատրաստ չէ։ Խնդրում ենք սպասել տպագրության ավարտին։",
+        notReady: true
+      });
+    }
+
+    // Если карта найдена в .CPS2 — можно выдавать
+    session.scanned = true;
+    session.customerCode = code;
+
+    const sel = session.selection;
+    if (!sel) {
+      return res.json({ success: false, error: "Выбор продукта не завершён" });
+    }
+
+    // Формируем строку для PrintResult.CPS2 (только если ещё нет — но это уже не важно)
+    const name = `${row.first_name || "ԱՆՈՒՆ"} ${row.last_name || "ԱԶԳԱՆՈՒՆ"}`.trim();
+    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+    const design = sel.designCode || "UNKNOWN";
+    const cur = sel.currency || "AMD";
+
+    const line = `${cardNumber}\t${name}\t${now}\t${design}\t${cur}\tISSUED`;
+
     fs.appendFile(RESULT_FILE, line + "\n", "utf8", (err) => {
-      if (err) console.error("Ошибка записи:", err);
+      if (err) {
+        console.error("Ошибка записи в PrintResult.CPS2:", err);
+        return res.json({ success: false, error: "Не удалось записать выдачу" });
+      }
+
+      console.log(`Карта выдана: ${cardNumber} — ${name}`);
       res.json({ success: true });
     });
   });
 });
-
 // === Служебные роуты ===
 app.get("/mobile-scan.html", (req, res) => {
   const sid = req.query.sid;
