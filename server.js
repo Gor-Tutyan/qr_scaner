@@ -580,14 +580,14 @@ app.post("/api/scan", (req, res) => {
       return res.json({ success: false, error: "Ошибка проверки готовности карты" });
     }
 
-      if (!cardFoundInPrintFiles) {
-    session.notReady = true;  // ← ЭТА СТРОЧКА ВАЖНА!
-    return res.json({
-      success: false,
-      error: "Քարտը չի գտնվե",
-      notReady: true
-    });
-  }
+  if (!cardFoundInPrintFiles) {
+        session.notReady = true;
+        return res.json({
+          success: false,
+          error: "Քարտը դեռ պատրաստ չէ",
+          notReady: true
+        });
+      }
 
     // Если карта найдена в .CPS2 — можно выдавать
     session.scanned = true;
