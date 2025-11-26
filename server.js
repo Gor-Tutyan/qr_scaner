@@ -465,32 +465,13 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
           if (d.success) {
             clearInterval(poll);
             const name = encodeURIComponent(d.first_name + " " + d.last_name);
-            const number = d.card_number || "4111111111111111";
-            location.href = "/card-result.html?name=" + name + "&number=" + number + "&design=" + sel.designId + "&code=" + design.designCode;
+            location.href =
+              \`/card-result.html?name=\${name}&number=\${d.card_number}&design=\${sel.designId}&code=\${design.designCode}\`;
           }
-          else if (d.notReady || (d.error && d.error.includes("պատրաստ չէ"))) {
-            clearInterval(poll);
-            document.getElementById("info").innerHTML = 
-              '<div style="background:#ffebee;color:#c62828;padding:20px;border-radius:16px;border:3px solid #e57373;font-weight:bold;font-size:20px;text-align:center;animation:shake 0.6s;">' +
-              'Քարտը դեռ պատրաստ չէ<br>' +
-              '<small style="font-size:16px;opacity:0.9;display:block;margin-top:10px;">Համոզվեք, որ քարտը արդեն տպագրված է<br>և գտնվում է .CPS2 ֆայլում</small>' +
-              '</div>' +
-              '<br><button onclick="location.reload()" style="padding:14px 32px;font-size:18px;background:#c62828;color:white;border:none;border-radius:12px;cursor:pointer;">' +
-              'Փորձել կրկին' +
-              '</button>';
-            
-            // Добавляем анимацию тряски один раз
-            if (!document.getElementById("shake-style")) {
-              const style = document.createElement("style");
-              style.id = "shake-style";
-              style.textContent = "@keyframes shake {0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-12px)}40%,80%{transform:translateX(12px)}}";
-              document.head.appendChild(style);
-            }
-          }
-        })
-        .catch(() => { /* игнорируем ошибки сети */ });
+        });
     }, 1500);
-    </script>
+  }
+</script>
 
 </body>
 </html>`);
