@@ -103,7 +103,15 @@
         body:JSON.stringify({sessionId, customerCode:code})
       });
       const json = await res.json();
-
+      if (!data.success) {
+        let msg = data.error || "Սխալ";
+        if (data.notReady) {
+          msg = "<span style='color:#d32f2f; font-weight:bold; font-size:18px;'>Դեռ պատրաստ չէ!</span><br>" + 
+                "Քարտը դեռ տպագրված չէ։ Խնդրում ենք սպասել։";
+        }
+        document.getElementById("status").innerHTML = msg;
+        return;
+      }
       if (json.success) {
         if (stream) stream.getTracks().forEach(t=>t.stop());
         document.body.innerHTML = `
