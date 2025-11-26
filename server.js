@@ -91,7 +91,7 @@ body {
   padding: 30px;
   margin: 20px auto;
   box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-  max-width: 960px;
+  max-width: 500px;
 }
 
 /* Заголовки */
@@ -111,44 +111,59 @@ h2 { color: #003087; font-size: 22px; margin: 35px 0 15px; }
   box-shadow: 0 6px 18px rgba(0,0,0,0.12);
   cursor: pointer;
   transition: .3s;
+  margin: 15px 15px;
 }
 #brands .card:hover { transform: translateY(-8px); }
 #brands .card img { max-height: 55px; width: auto; }
 #brands .card div { margin-top: 8px; font-size: 17px; color: #003087; font-weight: 600; }
 
-/* Продукты */
+/* ────── КРАСИВЫЕ КНОПКИ ПРОДУКТОВ С ХОРОШИМ РАССТОЯНИЕМ ────── */
 #products .grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 15px;
-}
-
-#products .card {
-  height: 150px;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  cursor: pointer;
-  transition: transform 0.3s, box-shadow 0.3s;
   display: flex;
-  flex-direction: column;
-  justify-content: flex-end; /* кнопки внизу карточки */
+  flex-wrap: wrap;
+  gap: 32px;               /* ← УВЕЛИЧЕННЫЙ ОТСТУП МЕЖДУ КНОПКАМИ */
+  justify-content: center;
+  margin: 40px 0;
+  padding: 0 20px;
+}
+
+.nice-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
   background: white;
+  color: #003087;
+  font-weight: 700;
+  font-size: 19px;
+  padding: 20px 36px;
+  border-radius: 20px;
+  box-shadow: 0 12px 32px rgba(0, 48, 135, 0.2);
+  cursor: pointer;
+  transition: all 0.35s ease;
+  border: 2.5px solid transparent;
+  min-width: 200px;
+  flex: 0 1 280px;         /* чтобы не растягивались, но и не сжимались слишком */
+  margin: 20px 20px;
 }
 
-#products .card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 12px 28px rgba(0,0,0,0.18);
+.nice-btn:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 20px 50px rgba(0, 48, 135, 0.32);
+  background: #f0f7ff;
+  border-color: #003087;
 }
 
-#products .card img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.nice-btn:active {
+  transform: translateY(-4px);
 }
 
-/* Контейнер кнопок на карточке продуктов */
+.btn-logo {
+  height: 44px;
+  width: auto;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
+}
+  /* Контейнер кнопок на карточке продуктов */
 #products .card .button-row {
   display: flex;
   justify-content: center;
@@ -321,7 +336,7 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
   <h2>Ընտրեք արժույթը</h2>
   <div class="currency-grid" id="currencies"></div>
   <br>
-  <button onclick="confirmChoice()" style="padding:16px 60px;font-size:22px;background:#003087;color:white;border:none;border-radius:12px;cursor:pointer">
+  <button onclick="confirmChoice()" style="font-size:22px;background:#003087;color:white;border:none;border-radius:12px;cursor:pointer">
     Շարունակել
   </button>
 </div>
@@ -361,14 +376,15 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
     document.getElementById("step1").style.display = "none";
     document.getElementById("step2").style.display = "block";
 
-    document.getElementById("products").innerHTML =
-      Object.keys(b.products).map(p => {
-        return \`
-          <div class="card" onclick="chooseProduct('\${p}')">
-            <div style="padding:20px 20px;font-size:12px">\${b.products[p].name}</div>
-          </div>
-        \`;
-      }).join("");
+  document.getElementById("products").innerHTML = Object.keys(b.products).map(p => {
+    const prod = b.products[p];
+    return \`
+      <div class="nice-btn" onclick="chooseProduct('\${p}')">
+        <img src="\${b.icon}" class="btn-logo" onerror="this.src='/icons/fallback.png'">
+        <span>\${prod.name}</span>
+      </div>
+    \`;
+  }).join("");
   }
 
   function chooseProduct(p) {
