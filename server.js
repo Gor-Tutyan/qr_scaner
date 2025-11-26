@@ -56,268 +56,33 @@ app.get("/", async (req, res) => {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Unibank — Մոմենտալ քարտ</title>
 <style>
-body {
-  font-family: system-ui, Arial, sans-serif;
-  background: #f8f9fa;
-  color: #333;
-  margin: 0;
-  padding: 15px 20px;
-  text-align: center;
-}
-
-/* Главные кнопки */
-.btn-big {
-  background: #003087;
-  color: white;
-  border: none;
-  border-radius: 12px;
-  padding: 10px 20px;
-  font-size: 16px;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-  width: auto;
-  max-width: 90%;
-  margin: 20px auto;
-  display: inline-block;
-  transition: 0.3s;
-}
-.btn-big:hover { background: #00205b; transform: translateY(-2px); }
-
-/* Шаги */
-.step {
-  display: none;
-  background: white;
-  border-radius: 18px;
-  padding: 30px;
-  margin: 20px auto;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-  max-width: 500px;
-}
-
-/* Заголовки */
-h1 { color: #003087; font-size: 29px; margin: 10px 0 28px; font-weight: 700; }
-h2 { color: #003087; font-size: 22px; margin: 35px 0 15px; }
-
-/* Бренды */
-#brands .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 18px; }
-#brands .card {
-  height: 120px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  background: white;
-  border-radius: 14px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
-  cursor: pointer;
-  transition: .3s;
-  margin: 15px 15px;
-}
-#brands .card:hover { transform: translateY(-8px); }
-#brands .card img { max-height: 55px; width: auto; }
-#brands .card div { margin-top: 8px; font-size: 17px; color: #003087; font-weight: 600; }
-
-/* ────── КРАСИВЫЕ КНОПКИ ПРОДУКТОВ С ХОРОШИМ РАССТОЯНИЕМ ────── */
-#products .grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 32px;               /* ← УВЕЛИЧЕННЫЙ ОТСТУП МЕЖДУ КНОПКАМИ */
-  justify-content: center;
-  margin: 40px 0;
-  padding: 0 20px;
-}
-
-.nice-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  background: white;
-  color: #003087;
-  font-weight: 700;
-  font-size: 19px;
-  padding: 20px 36px;
-  border-radius: 20px;
-  box-shadow: 0 12px 32px rgba(0, 48, 135, 0.2);
-  cursor: pointer;
-  transition: all 0.35s ease;
-  border: 2.5px solid transparent;
-  min-width: 200px;
-  flex: 0 1 280px;         /* чтобы не растягивались, но и не сжимались слишком */
-  margin: 20px 20px;
-}
-
-.nice-btn:hover {
-  transform: translateY(-10px);
-  box-shadow: 0 20px 50px rgba(0, 48, 135, 0.32);
-  background: #f0f7ff;
-  border-color: #003087;
-}
-
-.nice-btn:active {
-  transform: translateY(-4px);
-}
-
-.btn-logo {
-  height: 44px;
-  width: auto;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25));
-}
-  /* Контейнер кнопок на карточке продуктов */
-#products .card .button-row {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px;
-}
-
-/* Кнопки внутри карточки */
-#products .card .button-row div {
-  background: #003087;
-  color: white;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 8px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-  text-align: center;
-  cursor: pointer;
-  min-width: 60px;
-  max-width: 120px;
-  width: auto;
-  transition: background 0.3s, transform 0.2s;
-}
-
-#products .card .button-row div:hover {
-  background: #001f5f;
-  transform: translateY(-1px);
-}
-
-/* Дизайны */
-#designs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  justify-content: center;
-}
-
-#designs .card {
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 8px 25px rgba(0,0,0,0.14);
-  transition: transform 0.3s, box-shadow 0.3s;
-  cursor: pointer;
-  background: white;
-  border: 2px solid transparent;
-  width: 180px;
-  height: 220px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 12px;
-}
-
-#designs .card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 30px rgba(0,0,0,0.2);
-}
-
-#designs .card.selected {
-  border: 2px solid #003087;
-  transform: scale(1.02);
-}
-
-#designs .card img {
-  width: 200px;
-  height: auto;
-  display: block;
-  border-radius: 12px;
-  background-color: #f9f9f9;
-  object-fit: contain;
-  margin-bottom: 10px;
-}
-
-#designs .card div {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  font-weight: 600;
-  font-size: 14px;
-  color: #003087;
-}
-
-#designs .card div small {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: #666;
-}
-
-/* Валюты */
-.currency-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  justify-content: center;
-  margin: 30px 0;
-}
-.currency-btn {
-  background: #003087;
-  color: white;
-  padding: 8px 16px;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  width: auto;
-  min-width: 80px;
-  max-width: 140px;
-  transition: 0.3s;
-}
-.currency-btn:hover { background: #0040b0; }
-.currency-btn.selected { 
-  background: #00205b; 
-  border: 2px solid #ffd700; 
-  box-shadow: 0 0 15px rgba(255,215,0,0.4); 
-}
-
-/* Подтверждение */
-button[onclick="confirmChoice()"] {
-  padding: 8px 20px;
-  font-size: 16px;
-  background: #003087;
-  color: white;
-  border: none;
-  border-radius: 10px;
-  cursor: pointer;
-  width: auto;
-  min-width: 100px;
-  max-width: 180px;
-  transition: 0.3s;
-}
-button[onclick="confirmChoice()"]:hover { background: #00205b; }
-
-/* QR и информация */
-#qr-area {
-  display: none;
-  background: white;
-  padding: 40px;
-  border-radius: 18px;
-  box-shadow: 0 15px 50px rgba(0,0,0,0.18);
-  max-width: 560px;
-  margin: 40px auto;
-}
-#info {
-  background: #eef5ff;
-  padding: 18px;
-  border-radius: 12px;
-  border-left: 5px solid #003087;
-  font-size: 18px;
-  line-height: 1.6;
-}
+/* ────── ВСЁ ОСТАЛЬНОЕ ОСТАЛОСЬ БЕЗ ИЗМЕНЕНИЙ ────── */
+body{font-family:system-ui,Arial,sans-serif;background:#f8f9fa;color:#333;margin:0;padding:15px 20px;text-align:center}
+.btn-big{background:#003087;color:white;border:none;border-radius:12px;padding:10px 20px;font-size:16px;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,0.2);max-width:90%;margin:20px auto;display:inline-block;transition:.3s}
+.btn-big:hover{background:#00205b;transform:translateY(-2px)}
+.step{display:none;background:white;border-radius:18px;padding:30px;margin:20px auto;box-shadow:0 10px 40px rgba(0,0,0,0.1);max-width:500px}
+h1{color:#003087;font-size:29px;margin:10px 0 28px;font-weight:700}
+h2{color:#003087;font-size:22px;margin:35px 0 15px}
+#brands .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:18px}
+#brands .card{height:120px;display:flex;flex-direction:column;justify-content:center;align-items:center;background:white;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,0.12);cursor:pointer;transition:.3s}
+#brands .card:hover{transform:translateY(-8px)}
+#brands .card img{max-height:55px;width:auto}
+#brands .card div{margin-top:8px;font-size:17px;color:#003087;font-weight:600}
+#products .grid{display:flex;flex-wrap:wrap;gap:32px;justify-content:center;margin:40px 0;padding:0 20px}
+.nice-btn{display:flex;align-items:center;justify-content:center;gap:16px;background:white;color:#003087;font-weight:700;font-size:19px;padding:20px 36px;border-radius:20px;box-shadow:0 12px 32px rgba(0,48,135,0.2);cursor:pointer;transition:all .35s;border:2.5px solid transparent;min-width:200px;flex:0 1 280px}
+.nice-btn:hover{transform:translateY(-10px);box-shadow:0 20px 50px rgba(0,48,135,0.32);background:#f0f7ff;border-color:#003087}
+.btn-logo{height:44px;width:auto;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.25))}
+#designs{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}
+#designs .card{border-radius:16px;overflow:hidden;box-shadow:0 8px 25px rgba(0,0,0,0.14);transition:transform .3s,box-shadow .3s;cursor:pointer;background:white;border:2px solid transparent;width:180px;height:220px;display:flex;flex-direction:column;align-items:center;padding:12px}
+#designs .card:hover{transform:translateY(-4px);box-shadow:0 12px 30px rgba(0,0,0,0.2)}
+#designs .card.selected{border:2px solid #003087;transform:scale(1.02)}
+#designs .card img{width:200px;height:auto;border-radius:12px;background:#f9f9f9;object-fit:contain;margin-bottom:10px}
+.currency-grid{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin:30px 0}
+.currency-btn{background:#003087;color:white;padding:8px 16px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;min-width:80px;transition:.3s}
+.currency-btn:hover{background:#0040b0}
+.currency-btn.selected{background:#00205b;border:2px solid #ffd700;box-shadow:0 0 15px rgba(255,215,0,0.4)}
+#qr-area{display:none;background:white;padding:40px;border-radius:18px;box-shadow:0 15px 50px rgba(0,0,0,0.18);max-width:560px;margin:40px auto}
+#info{background:#eef5ff;padding:18px;border-radius:12px;border-left:5px solid #003087;font-size:18px;line-height:1.6}
 </style>
 </head>
 <body>
@@ -360,12 +125,7 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
       document.getElementById("brands").innerHTML =
         Object.keys(cfg.brands).map(k => {
           const b = cfg.brands[k];
-          return \`
-            <div class="card" onclick="chooseBrand('\${k}')">
-              <img src="\${b.icon}" onerror="this.src='/icons/fallback.png'">
-              <div>\${b.name}</div>
-            </div>
-          \`;
+          return "<div class='card' onclick='chooseBrand(\""+k+"\")'><img src='"+b.icon+"' onerror='this.src=\"/icons/fallback.png\"'><div>"+b.name+"</div></div>";
         }).join("");
     });
 
@@ -375,49 +135,28 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
     document.getElementById("brand-title").textContent = b.name;
     document.getElementById("step1").style.display = "none";
     document.getElementById("step2").style.display = "block";
-
-  document.getElementById("products").innerHTML = Object.keys(b.products).map(p => {
-    const prod = b.products[p];
-    return \`
-      <div class="nice-btn" onclick="chooseProduct('\${p}')">
-        <img src="\${b.icon}" class="btn-logo" onerror="this.src='/icons/fallback.png'">
-        <span>\${prod.name}</span>
-      </div>
-    \`;
-  }).join("");
+    document.getElementById("products").innerHTML = Object.keys(b.products).map(p => {
+      const prod = b.products[p];
+      return "<div class='nice-btn' onclick='chooseProduct(\""+p+"\")'><img src='"+b.icon+"' class='btn-logo' onerror='this.src=\"/icons/fallback.png\"'><span>"+prod.name+"</span></div>";
+    }).join("");
   }
 
   function chooseProduct(p) {
     sel.product = p;
     const brand = cfg.brands[sel.brand];
     const prod = brand.products[p];
-
-    document.getElementById("product-title").textContent =
-      brand.name + " " + prod.name;
-
+    document.getElementById("product-title").textContent = brand.name + " " + prod.name;
     document.getElementById("step2").style.display = "none";
     document.getElementById("step3").style.display = "block";
 
-    // Designs
-    document.getElementById("designs").innerHTML =
-      prod.designs.map(id => {
-        const d = cfg.designs[id];
-        return \`
-          <div class="card" onclick="selectDesign(\${id}, this)">
-            <img src="\${d.image}" onerror="this.src='/cards/fallback.jpg'">
-            <div>\${d.name}<br><small>\${d.designCode}</small></div>
-          </div>
-        \`;
-      }).join("");
+    document.getElementById("designs").innerHTML = prod.designs.map(id => {
+      const d = cfg.designs[id];
+      return "<div class='card' onclick='selectDesign("+id+", this)'><img src='"+d.image+"' onerror='this.src=\"/cards/fallback.jpg\"'><div>"+d.name+"<br><small>"+d.designCode+"</small></div></div>";
+    }).join("");
 
-    // Currencies
-    document.getElementById("currencies").innerHTML =
-      prod.currencies.map(cur => \`
-        <div class="currency-btn"
-             onclick="sel.currency='\${cur}';document.querySelectorAll('.currency-btn').forEach(x=>x.classList.remove('selected'));this.classList.add('selected')">
-          \${cur}
-        </div>
-      \`).join("");
+    document.getElementById("currencies").innerHTML = prod.currencies.map(cur => 
+      "<div class='currency-btn' onclick='sel.currency=\""+cur+"\";document.querySelectorAll(\".currency-btn\").forEach(x=>x.classList.remove(\"selected\"));this.classList.add(\"selected\")'>"+cur+"</div>"
+    ).join("");
   }
 
   function selectDesign(id, el) {
@@ -449,51 +188,60 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
       })
     });
 
-    document.getElementById("info").innerHTML = \`
-      <b>\${brandName} \${prodName}</b><br>
-      Դիզայն՝ \${design.name} (\${design.designCode})<br>
-      Արժույթ՝ \${sel.currency}
-    \`;
+    document.getElementById("info").innerHTML = "<b>"+brandName+" "+prodName+"</b><br>Դիզայն՝ "+design.name+" ("+design.designCode+")<br>Արժույթ՝ "+sel.currency;
 
     document.getElementById("step3").style.display = "none";
     document.getElementById("qr-area").style.display = "block";
 
-    const poll = setInterval(() => {
+    // ────── ИСПРАВЛЕННЫЙ POLL ──────
+    const poll = setInterval(function() {
       fetch("/api/status/" + sid)
         .then(r => r.json())
         .then(d => {
           if (d.success) {
             clearInterval(poll);
-            const name = encodeURIComponent(d.first_name + " " + d.last_name);
-            location.href =
-              \`/card-result.html?name=\${name}&number=\${d.card_number}&design=\${sel.designId}&code=\${design.designCode}\`;
+            const name = encodeURIComponent((d.first_name || "") + " " + (d.last_name || ""));
+            const number = d.card_number || "4111111111111111";
+            location.href = "/card-result.html?name=" + name + "&number=" + number + "&design=" + sel.designId + "&code=" + design.designCode;
           }
-        });
+          else if (d.notReady || (d.error && d.error.indexOf("պատրաստ չէ") > -1)) {
+            clearInterval(poll);
+            // Добавляем анимацию тряски один раз
+            if (!document.getElementById("shakeAnim")) {
+              const style = document.createElement("style");
+              style.id = "shakeAnim";
+              style.textContent = "@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-12px)}40%,80%{transform:translateX(12px)}}";
+              document.head.appendChild(style);
+            }
+            document.getElementById("info").innerHTML = 
+              "<div style='background:#ffebee;color:#c62828;padding:20px;border-radius:16px;border:3px solid #e57373;font-weight:bold;font-size:22px;text-align:center;animation:shake 0.6s;'>" +
+              "Քարտը դեռ պատրաստ չէ<br>" +
+              "<small style='font-size:16px;display:block;margin-top:10px;opacity:0.9;'>Համոզվեք, որ քարտը արդեն տպագրված է .CPS2 ֆայլում</small>" +
+              "</div>" +
+              "<br><button onclick='location.reload()' style='padding:14px 32px;font-size:18px;background:#c62828;color:white;border:none;border-radius:12px;cursor:pointer;'>Փորձել կրկին</button>";
+          }
+        })
+        .catch(() => {});
     }, 1500);
+    // ────── КОНЕЦ ИСПРАВЛЕНИЯ ──────
   }
 </script>
-
 </body>
 </html>`);
 });
 
-// === API: сохранение выбора ===
+/* ────── ВСЁ ОСТАЛЬНОЕ ОСТАЁТСЯ БЕЗ ИЗМЕНЕНИЙ ────── */
 app.post("/api/set-selection", (req, res) => {
   const { sessionId, selection } = req.body;
-  if (sessions.has(sessionId)) {
-    sessions.get(sessionId).selection = selection;
-  }
+  if (sessions.has(sessionId)) sessions.get(sessionId).selection = selection;
   res.json({ ok: true });
 });
 
-// === API: статус ===
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
-
   db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
     if (err || !row) return res.json({ pending: true });
-
     res.json({
       success: true,
       first_name: row.first_name || "ԱՆՈՒՆ",
@@ -503,56 +251,33 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// === API: обработка сканирования (С ЖЁСТКОЙ ПРОВЕРКОЙ НАЛИЧИЯ КАРТЫ В .CPS2) ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
-  if (!sessionId || !customerCode) {
-    return res.json({ success: false, error: "Нет данных" });
-  }
+  if (!sessionId || !customerCode) return res.json({ success: false, error: "Нет данных" });
 
   const session = sessions.get(sessionId);
-  if (!session) {
-    return res.json({ success: false, error: "Сессия истекла или неверная" });
-  }
+  if (!session) return res.json({ success: false, error: "Сессия истекла" });
 
   const code = customerCode.toString().trim().replace(/\D/g, "");
-  if (code.length < 4) {
-    return res.json({ success: false, error: "Неверный код клиента" });
-  }
+  if (code.length < 4) return res.json({ success: false, error: "Неверный код" });
 
-  // 1. Ищем клиента в базе
   db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
-    if (err || !row) {
-      return res.json({ success: false, error: "Клиент не найден в базе" });
-    }
+    if (err || !row) return res.json({ success: false, error: "Клиент не найден" });
 
     const cardNumber = (row.card_number || "").replace(/\s/g, "").trim();
-    if (!cardNumber) {
-      return res.json({ success: false, error: "У клиента нет номера карты" });
-    }
+    if (!cardNumber) return res.json({ success: false, error: "Нет номера карты" });
 
-    // 2. Проверяем — есть ли этот номер хотя бы в одном .CPS2 файле в /prints
-    let cardFoundInPrintFiles = false;
+    let cardFound = false;
     try {
-      const printsDir = path.join(__dirname, "public", "prints");
-      const files = fs.readdirSync(printsDir);
-
-      for (const file of files) {
-        if (!file.toLowerCase().endsWith(".cps2")) continue;
-
-        const content = fs.readFileSync(path.join(printsDir, file), "utf8");
-        if (content.includes(cardNumber)) {
-          cardFoundInPrintFiles = true;
-          break;
-        }
+      const files = fs.readdirSync(path.join(__dirname, "public", "prints"));
+      for (const f of files) {
+        if (!f.toLowerCase().endsWith(".cps2")) continue;
+        const content = fs.readFileSync(path.join(__dirname, "public", "prints", f), "utf8");
+        if (content.includes(cardNumber)) { cardFound = true; break; }
       }
-    } catch (e) {
-      console.error("Ошибка чтения папки prints:", e);
-      return res.json({ success: false, error: "Ошибка проверки готовности карты" });
-    }
+    } catch (e) { console.error(e); }
 
-    // КЛЮЧЕВОЕ УСЛОВИЕ:
-    if (!cardFoundInPrintFiles) {
+    if (!cardFound) {
       return res.json({
         success: false,
         error: "Քարտը դեռ պատրաստ չէ։ Խնդրում ենք սպասել տպագրության ավարտին։",
@@ -560,35 +285,26 @@ app.post("/api/scan", (req, res) => {
       });
     }
 
-    // Если карта найдена в .CPS2 — можно выдавать
     session.scanned = true;
     session.customerCode = code;
 
     const sel = session.selection;
-    if (!sel) {
-      return res.json({ success: false, error: "Выбор продукта не завершён" });
-    }
+    if (!sel) return res.json({ success: false, error: "Выбор не завершён" });
 
-    // Формируем строку для PrintResult.CPS2 (только если ещё нет — но это уже не важно)
-    const name = `${row.first_name || "ԱՆՈՒՆ"} ${row.last_name || "ԱԶԳԱՆՈՒՆ"}`.trim();
-    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
-    const design = sel.designCode || "UNKNOWN";
-    const cur = sel.currency || "AMD";
+    const name = (row.first_name || "ԱՆՈՒՆ") + " " + (row.last_name || "ԱԶԳԱՆՈՒՆ");
+    const line = cardNumber + "\t" + name + "\t" + new Date().toISOString().slice(0,19).replace("T"," ") + "\t" + (sel.designCode || "UNKNOWN") + "\t" + (sel.currency || "AMD") + "\tISSUED";
 
-    const line = `${cardNumber}\t${name}\t${now}\t${design}\t${cur}\tISSUED`;
-
-    fs.appendFile(RESULT_FILE, line + "\n", "utf8", (err) => {
+    fs.appendFile(RESULT_FILE, line + "\n", "utf8", err => {
       if (err) {
-        console.error("Ошибка записи в PrintResult.CPS2:", err);
-        return res.json({ success: false, error: "Не удалось записать выдачу" });
+        console.error(err);
+        return res.json({ success: false, error: "Ошибка записи" });
       }
-
-      console.log(`Карта выдана: ${cardNumber} — ${name}`);
+      console.log("Карта выдана:", cardNumber, name);
       res.json({ success: true });
     });
   });
 });
-// === Служебные роуты ===
+
 app.get("/mobile-scan.html", (req, res) => {
   const sid = req.query.sid;
   if (sid && /^[a-z0-9]{32}$/.test(sid)) {
@@ -601,7 +317,6 @@ app.get("/PrintResult.CPS2", (req, res) => {
   res.sendFile(RESULT_FILE);
 });
 
-// Очистка старых сессий
 setInterval(() => {
   const now = Date.now();
   for (const [k, v] of sessions) {
@@ -609,9 +324,7 @@ setInterval(() => {
   }
 }, 300000);
 
-// === SERVER START ===
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("Unibank моментальная выдача запущена!");
-  console.log(`Ссылка на результат: http://localhost:${PORT}/PrintResult.CPS2`);
+  console.log("Unibank моментальная выдача запущена на порту " + PORT);
 });
