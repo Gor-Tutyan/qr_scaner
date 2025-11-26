@@ -17,7 +17,7 @@
 <body>
 
   <div class="card-wrapper">
-    <img id="cardImage" class="card-img" alt="Unibank քարտ">
+    <img id="cardImage" class="card-img" alt="Unibank քարտ" src="/cards/fallback.jpg">
   </div>
 
   <div class="info">
@@ -28,13 +28,31 @@
 
   <script>
     const params = new URLSearchParams(location.search);
-    const name = decodeURIComponent(params.get('name') || 'ՀԱՅԿ ՀԱՅԿԱԶՒՆ').toUpperCase();
+    const name = decodeURIComponent(params.get('name') || 'ՀԱՅԿ ՀԱՅԿԱԶՈՒՆ').toUpperCase();
     const number = (params.get('number') || '4111111111111111').replace(/(.{4})/g, '$1 ').trim();
-    const design = params.get('design') || 1;
+    const designId = params.get('design'); // например "5", "1", "12" — это ID из cards.json
 
+    // Сразу заполняем имя и номер
     document.getElementById('clientName').textContent = name;
     document.getElementById('clientNumber').textContent = number;
-    document.getElementById('cardImage').src = `/cards/card${design}.png?t=${Date.now()}`;
+
+    // Загружаем конфиг и подставляем правильную картинку
+    fetch('/config/cards.json?t=' + Date.now())
+      .then(r => r.json())
+      .then(cfg => {
+        if (designId && cfg.designs && cfg.designs[designId]) {
+          const imagePath = cfg.designs[designId].image;
+          document.getElementById('cardImage').src = imagePath + '?t=' + Date.now();
+        } else {
+          // Если дизайн не найден — оставляем fallback
+          document.getElementById('cardImage').src = '/cards/fallback.jpg?t=' + Date.now();
+        }
+      })
+      .catch(err => {
+        console.error('Ошибка загрузки cards.json:', err);
+        // На случай, если конфиг не загрузился — показываем хотя бы классику
+        document.getElementById('cardImage').src = '/cards/Visa Classic.png?t=' + Date.now();
+      });
   </script>
 </body>
 </html>
