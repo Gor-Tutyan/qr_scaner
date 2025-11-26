@@ -504,10 +504,21 @@ app.post("/api/set-selection", (req, res) => {
   res.json({ ok: true });
 });
 
-// === API: статус ===
+// === API: статус (ИСПРАВЛЕННЫЙ) ===
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
-  if (!s || !s.scanned || !s.customerCode) return res.json({ pending: true });
+  if (!s) return res.json({ pending: true });
+
+  // Если уже сканировали, но карта ещё не готова — возвращаем notReady
+  if (s.scanned && s.customerCode && s.notReady) {
+    return res.json({
+      success: false,
+      error: "Քարտը դեռ պատրաստ չէ։ Խնդրում ենք սպասել տպագրության ավարտին։",
+      notReady: true
+    });
+  }
+
+  if (!s.scanned || !s.customerCode) return res.json({ pending: true });
 
   db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
     if (err || !row) return res.json({ pending: true });
@@ -569,14 +580,14 @@ app.post("/api/scan", (req, res) => {
       return res.json({ success: false, error: "Ошибка проверки готовности карты" });
     }
 
-    // КЛЮЧЕВОЕ УСЛОВИЕ:
-    if (!cardFoundInPrintFiles) {
-      return res.json({
-        success: false,
-        error: "Քարտը դեռ պատրաստ չէ։ Խնդրում ենք սպասել տպագրության ավարտին։",
-        notReady: true
-      });
-    }
+      if (!cardFoundInPrintFiles) {
+    session.notReady = true;  // ← ЭТА СТРОЧКА ВАЖНА!
+    return res.json({
+      success: false,
+      error: "Քարտը չի գտնվե",
+      notReady: true
+    });
+  }
 
     // Если карта найдена в .CPS2 — можно выдавать
     session.scanned = true;
