@@ -3,56 +3,107 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Քարտը տրամադրվել է • Unibank</title>
+  <title>Քարտի տրամադրում • Unibank</title>
   <style>
-    body {margin:0;padding:40px 20px;background:#f5f7fa;display:flex;flex-direction:column;align-items:center;font-family:'Segoe UI',Arial,sans-serif;}
-    .card-wrapper {width:100%;max-width:420px;border-radius:16px;overflow:hidden;box-shadow:0 15px 40px rgba(0,0,0,0.25);margin-bottom:30px;}
-    .card-img {width:100%;display:block;}
-    .info {text-align:center;color:#003087;font-weight:bold;}
-    .name {font-size:26px;margin-bottom:8px;}
-    .number {font-family:'Courier New',monospace;font-size:24px;letter-spacing:4px;color:#000;background:#e8f0ff;padding:10px 20px;border-radius:10px;display:inline-block;}
-    .success {margin-top:20px;color:#006400;font-size:20px;font-weight:bold;}
+    body {
+      margin:0;padding:40px 20px;background:#f5f7fa;
+      display:flex;flex-direction:column;align-items:center;
+      font-family:'Segoe UI',Arial,sans-serif;min-height:100vh;
+      justify-content:center;
+    }
+    .container {
+      width:100%;max-width:420px;border-radius:20px;overflow:hidden;
+      box-shadow:0 20px 50px rgba(0,0,0,0.25);background:white;
+    }
+    .card-img {
+      width:100%;display:block;border-radius:20px 20px 0 0;
+    }
+    .info {
+      text-align:center;padding:30px 20px;color:#003087;
+    }
+    .name {
+      font-size:28px;font-weight:800;margin-bottom:12px;color:#003087;
+    }
+    .number {
+      font-family:'Courier New',monospace;font-size:26px;letter-spacing:5px;
+      background:#e8f0ff;padding:14px 24px;border-radius:14px;display:inline-block;
+      margin:10px 0;box-shadow:0 4px 15px rgba(0,48,135,0.1);
+    }
+    .status {
+      margin-top:25px;padding:20px;font-size:22px;font-weight:bold;
+      border-radius:16px;width:100%;text-align:center;
+    }
+    .success {
+      background:#e8f5e8;color:#006400;border:2px solid #4caf50;
+    }
+    .error {
+      background:#ffebee;color:#c62828;border:3px solid #e57373;
+      animation: shake 0.5s ease-in-out;
+    }
+    @keyframes shake {
+      0%,100% { transform:translateX(0); }
+      20%,60% { transform:translateX(-10px); }
+      40%,80% { transform:translateX(10px); }
+    }
+    .btn {
+      margin-top:30px;padding:16px 40px;font-size:20px;background:#003087;
+      color:white;border:none;border-radius:16px;cursor:pointer;
+      box-shadow:0 8px 25px rgba(0,48,135,0.3);transition:0.3s;
+    }
+    .btn:hover {background:#00205b;transform:translateY(-3px);}
   </style>
 </head>
 <body>
 
-  <div class="card-wrapper">
-    <img id="cardImage" class="card-img" alt="Unibank քարտ" src="/cards/fallback.jpg">
+  <div class="container">
+    <img id="cardImage" class="card-img" src="/cards/fallback.jpg" alt="Քարտ">
+    
+    <div class="info">
+      <div class="name" id="clientName">ՀԱՅԿ ՀԱՅԿԱԶՈՒՆ</div>
+      <div class="number" id="clientNumber">4111 1111 1111 1111</div>
+      
+      <div id="statusBox" class="status success">
+        Քարտը հաջողությամբ տրամադրվել է
+      </div>
+    </div>
   </div>
 
-  <div class="info">
-    <div class="name" id="clientName">ՀԱՅԿ ՀԱՅԿԱԶՈՒՆ</div>
-    <div class="number" id="clientNumber">4111 1111 1111 1111</div>
-    <div class="success">Քարտը հաջողությամբ տրամադրվել է</div>
-  </div>
+  <button class="btn" onclick="location.href='/'">Նոր հաճախորդ</button>
 
   <script>
     const params = new URLSearchParams(location.search);
-    const name = decodeURIComponent(params.get('name') || 'ՀԱՅԿ ՀԱՅԿԱԶՈՒՆ').toUpperCase();
-    const number = (params.get('number') || '4111111111111111').replace(/(.{4})/g, '$1 ').trim();
-    const designId = params.get('design'); // например "5", "1", "12" — это ID из cards.json
+    const name = decodeURIComponent(params.get('name') || '').trim() || 'ՀԱՅԿ ՀԱՅԿԱԶՈՒՆ';
+    const number = params.get('number') || '4111111111111111';
+    const designId = params.get('design');
 
-    // Сразу заполняем имя и номер
-    document.getElementById('clientName').textContent = name;
-    document.getElementById('clientNumber').textContent = number;
+    // Заполняем имя и номер
+    document.getElementById('clientName').textContent = name.toUpperCase();
+    document.getElementById('clientNumber').textContent = number.replace(/(.{4})/g, '$1 ').trim();
 
-    // Загружаем конфиг и подставляем правильную картинку
+    // Если нет номера — это значит, что выдача не прошла (ошибка на сервере)
+    if (!params.has('number') || number === '4111111111111111') {
+      showError("Քարտը դեռ պատրաստ չէ<br><small>Համոզվեք, որ քարտը արդեն տպագրված է և առկա է .CPS2 ֆայլում</small>");
+      return;
+    }
+
+    // Загружаем правильный дизайн
     fetch('/config/cards.json?t=' + Date.now())
       .then(r => r.json())
       .then(cfg => {
-        if (designId && cfg.designs && cfg.designs[designId]) {
-          const imagePath = cfg.designs[designId].image;
-          document.getElementById('cardImage').src = imagePath + '?t=' + Date.now();
-        } else {
-          // Если дизайн не найден — оставляем fallback
-          document.getElementById('cardImage').src = '/cards/fallback.jpg?t=' + Date.now();
+        if (designId && cfg.designs?.[designId]?.image) {
+          document.getElementById('cardImage').src = cfg.designs[designId].image + '?t=' + Date.now();
         }
       })
-      .catch(err => {
-        console.error('Ошибка загрузки cards.json:', err);
-        // На случай, если конфиг не загрузился — показываем хотя бы классику
-        document.getElementById('cardImage').src = '/cards/Visa Classic.png?t=' + Date.now();
+      .catch(() => {
+        document.getElementById('cardImage').src = '/cards/fallback.jpg?t=' + Date.now();
       });
+
+    function showError(message) {
+      const statusBox = document.getElementById('statusBox');
+      statusBox.className = "status error";
+      statusBox.innerHTML = message;
+      document.querySelector('.btn').textContent = "Վերադառնալ";
+    }
   </script>
 </body>
 </html>
