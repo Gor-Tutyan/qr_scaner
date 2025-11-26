@@ -308,7 +308,7 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
 <body>
 
 <button class="btn-big" onclick="document.getElementById('step1').style.display='block';this.style.display='none'">
-  Ստանալ մոմենտալ քարտ
+  Ստանալ քարտ
 </button>
 
 <div id="step1" class="step"><h1>Ընտրեք բրենդը</h1><div class="grid" id="brands"></div></div>
@@ -327,7 +327,7 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
 </div>
 
 <div id="qr-area">
-  <h2>Ցուցադրեք QR-կոդը հաճախորդին</h2>
+  <h2>Սքանավորեք QR-կոդը</h2>
   <img src="${qrUrl}" style="max-width:420px"><br><br>
   <div id="info" style="font-size:20px;font-weight:bold;line-height:1.8"></div><br>
   <button onclick="location.reload()" style="padding:15px 40px;font-size:18px">Նոր հաճախորդ</button>
