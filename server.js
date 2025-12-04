@@ -16,7 +16,7 @@ if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new sqlite3.Database(dbPath);
 const sessions = new Map();
 
-const RESULT_FILE = path.join(__dirname, "public", "prints", "PrintResult.CPS2");
+const RESULT_FILE = path.join(__dirname, "public", "printFile", "PrintResult.CPS2");
 if (!fs.existsSync(RESULT_FILE)) {
   fs.writeFileSync(RESULT_FILE, "", "utf8");
   console.log("Создан PrintResult.CPS2");
@@ -31,9 +31,62 @@ db.serialize(() => {
   )`);
 });
 
+// === КРАСИВОЕ ЛОГИРОВАНИЕ ===
+const LOG_DIR = path.join(__dirname, "logs");
+if (!fs.existsSync(LOG_DIR)) {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
+function getTime() {
+  return new Date().toLocaleString("ru-RU", {
+    timeZone: "Asia/Yerevan",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+function log(message) {
+  const timestamp = getTime();
+  const dateStr = new Date().toISOString().slice(0,10); // 2025-12-04
+  const line = `[${timestamp}] ${message}\n`;
+  
+  console.log(line.trim()); // в консоль
+  
+  // в файл по дням
+  const logFile = path.join(LOG_DIR, `${dateStr}.log`);
+  fs.appendFileSync(logFile, line, "utf8");
+}
+
+// При старте сервера
+log("==========================================");
+log("Сервер запущен — система выдачи карт Unibank");
+log(`Результат → ${RESULT_FILE}`);
+log("==========================================");
+// === ЗАГРУЗКА КОНФИГУРАЦИИ КАРТ ПРИ СТАРТЕ ===
+global.cardConfig = null;
+const configPath = path.join(__dirname, "public", "config", "cards.json");
+
+if (fs.existsSync(configPath)) {
+  try {
+    global.cardConfig = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    log("Конфигурация cards.json успешно загружена");
+  } catch (e) {
+    log(`ОШИБКА при чтении cards.json → ${e.message}`);
+  }
+} else {
+  log(`ПРЕДУПРЕЖДЕНИЕ | Файл cards.json НЕ НАЙДЕН по пути: ${configPath}`);
+  log(`           Убедитесь, что файл лежит в public/config/cards.json`);
+}
+
+
 // === ГЛАВНАЯ СТРАНИЦА ===
 app.get("/", async (req, res) => {
   const sessionId = crypto.randomUUID().replace(/-/g, "").slice(0, 32);
+  log(`НОВАЯ СЕССИЯ | ID: ${sessionId.slice(0,8)}...`);
   sessions.set(sessionId, {
     scanned: false,
     customerCode: null,
@@ -495,35 +548,41 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
 </html>`);
 });
 
-// === API: сохранение выбора ===
+// === API: сохранение выбора (С ЛОГИРОВАНИЕМ) ===
 app.post("/api/set-selection", (req, res) => {
   const { sessionId, selection } = req.body;
-  if (sessions.has(sessionId)) {
-    sessions.get(sessionId).selection = selection;
+  if (!sessions.has(sessionId)) {
+    log(`ОШИБКА | Сессия ${sessionId.slice(0,8)}... не найдена при выборе продукта`);
+    return res.json({ ok: false });
   }
+
+  sessions.get(sessionId).selection = selection;
+
+  const cfg = global.cardConfig;
+  if (!cfg) return res.json({ ok: true });
+
+// Безопасное получение названий
+const brandName = cfg?.brands?.[selection.brand]?.name || selection.brand || "Неизвестный бренд";
+const prodName = cfg?.brands?.[selection.brand]?.products?.[selection.product]?.name || selection.product || "Неизвестный продукт";
+const designObj = cfg?.designs?.[selection.designId];
+const designName = designObj?.name || "Без дизайна";
+const designCode = selection.designCode || designObj?.designCode || "???";
   res.json({ ok: true });
 });
 
-// === API: статус (ФИНАЛЬНЫЙ, 100% РАБОЧИЙ) ===
+// === API: статус ===
 app.get("/api/status/:id", (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s) return res.json({ pending: true });
 
-  // Если уже сканировали, но карта не готова — сразу говорим об этом
   if (s.notReady === true) {
-    return res.json({
-      success: false,
-      notReady: true,
-      error: "Քարտը դեռ պատրաստ չէ"
-    });
+    return res.json({ success: false, notReady: true, error: "Քարտը դեռ պատրաստ չէ" });
   }
 
-  // Если ещё не сканировали
   if (!s.scanned || !s.customerCode) {
     return res.json({ pending: true });
   }
 
-  // Если всё ок — выдаём данные
   db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
     if (err || !row) return res.json({ pending: true });
     res.json({
@@ -535,53 +594,74 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// === API: обработка сканирования (С ЖЁСТКОЙ ПРОВЕРКОЙ НАЛИЧИЯ КАРТЫ В .CPS2) ===
-// === API: обработка сканирования (КОПИРУЕМ ТОЧНУЮ СТРОКУ ИЗ .CPS2) ===
+// === API: сканирование — ГЛАВНЫЙ БЛОК С ПОЛНЫМ ЛОГИРОВАНИЕМ ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   if (!sessionId || !customerCode) {
+    log(`ОШИБКА | Нет данных при сканировании (sessionId или customerCode пустые)`);
     return res.json({ success: false, error: "Нет данных" });
   }
 
   const session = sessions.get(sessionId);
   if (!session) {
-    return res.json({ success: false, error: "Сессия истекла или неверная" });
+    log(`ОШИБКА | Сессия ${sessionId.slice(0,8)}... истекла или не найдена при сканировании`);
+    return res.json({ success: false, error: "Сессия истекла" });
   }
 
   const code = customerCode.toString().trim().replace(/\D/g, "");
   if (code.length < 4) {
-    return res.json({ success: false, error: "Неверный код клиента" });
+    log(`ОШИБКА | Неверный код клиента: ${customerCode}`);
+    return res.json({ success: false, error: "Неверный код" });
   }
 
-  // 1. Ищем клиента в базе
+  // Загружаем выбор продукта
+  const sel = session.selection || {};
+  const brandName = global.cardConfig?.brands?.[sel.brand]?.name || sel.brand || "Не выбрано";
+  const prodName = global.cardConfig?.brands?.[sel.brand]?.products?.[sel.product]?.name || sel.product || "Не выбрано";
+  const design = global.cardConfig?.designs?.[sel.designId] || {};
+  const designName = design.name || "Не выбрано";
+  const designCode = sel.designCode || design.designCode || "???";
+  const currency = sel.currency || "Не выбрано";
+
+  log(`СКАНИРОВАНИЕ | Сессия ${sessionId.slice(0,8)}... | Код клиента: ${code} | Выбор: ${brandName} ${prodName} | ${designName} (${designCode}) | ${currency}`);
+
   db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
-    if (err || !row) {
+    if (err) {
+      log(`ОШИБКА БД | Поиск клиента ${code} → ${err.message}`);
+      return res.json({ success: false, error: "Ошибка базы" });
+    }
+
+    if (!row) {
+      log(`КЛИЕНТ НЕ НАЙДЕН В БАЗЕ | Код: ${code} | Сессия ${sessionId.slice(0,8)}...`);
       return res.json({ success: false, error: "Клиент не найден в базе" });
     }
 
+    const fullName = `${row.first_name || ""} ${row.last_name || ""}`.trim() || "Без имени";
     const cardNumber = (row.card_number || "").replace(/\s/g, "").trim();
+
+    log(`НАЙДЕН В БАЗЕ → ${fullName} | Код: ${row.client_code} | Карта: ${cardNumber || "НЕТ НОМЕРА"}`);
+
     if (!cardNumber) {
-      return res.json({ success: false, error: "У клиента нет номера карты" });
+      log(`ОТКАЗ | У клиента ${fullName} нет номера карты`);
+      return res.json({ success: false, error: "Нет номера карты" });
     }
 
-    // 2. Ищем ТОЧНУЮ строку с этим номером карты в любом .cps2 файл
+    // Поиск в embossingFiles
     let originalLine = null;
-
     try {
-      const printsDir = path.join(__dirname, "public", "prints");
-      const files = fs.readdirSync(printsDir);
+      const embossingDir = path.join(__dirname, "public", "embossingFiles");
+      if (!fs.existsSync(embossingDir)) {
+        log(`ОШИБКА | Папка embossingFiles не найдена: ${embossingDir}`);
+        return res.json({ success: false, error: "Папка не найдена" });
+      }
 
+      const files = fs.readdirSync(embossingDir);
       for (const file of files) {
         if (!file.toLowerCase().endsWith(".cps2")) continue;
-
-        const filePath = path.join(printsDir, file);
-        const content = fs.readFileSync(filePath, "utf8");
+        const content = fs.readFileSync(path.join(embossingDir, file), "utf8");
         const lines = content.split(/\r?\n/);
-
         for (const line of lines) {
-          if (line.trim() === "") continue;
-          // Проверяем, что в строке есть номер карты (даже если он с пробелами или в другом формате)
-          if (line.includes(cardNumber) || line.replace(/\s/g, "").includes(cardNumber)) {
+          if (line.trim() && (line.includes(cardNumber) || line.replace(/\s/g, "").includes(cardNumber))) {
             originalLine = line;
             break;
           }
@@ -589,54 +669,42 @@ app.post("/api/scan", (req, res) => {
         if (originalLine) break;
       }
     } catch (e) {
-      console.error("Ошибка чтения папки prints:", e);
-      return res.json({ success: false, error: "Ошибка проверки готовности карты" });
+      log(`ОШИБКА ЧТЕНИЯ embossingFiles → ${e.message}`);
     }
 
-    // Если строка не найдена — карта ещё не напечатана
     if (!originalLine) {
       session.notReady = true;
       session.scanned = true;
       session.customerCode = code;
-      return res.json({
-        success: false,
-        notReady: true,
-        error: "Քարտը դեռ պատրաստ չէ"
-      });
+
+      log(`ЕЩЁ НЕ ГОТОВА | ${fullName} | ${cardNumber} | Карта не найдена в .CPS2 файлах`);
+      return res.json({ success: false, notReady: true, error: "Քարտը դեռ պատրաստ չէ" });
     }
 
-    // УСПЕХ: нашли оригинальную строку!
+    // УСПЕШНАЯ ВЫДАЧА — САМАЯ ВАЖНАЯ СТРОКА В ЛОГЕ
     session.scanned = true;
     session.customerCode = code;
 
-    const sel = session.selection;
-    if (!sel) {
-      return res.json({ success: false, error: "Выбор продукта не завершён" });
-    }
+    log(`===================================================================`);
+    log(`КАРТА ВЫДАНА УСПЕШНО`);
+    log(`Клиент: ${fullName}`);
+    const prettyCard = cardNumber ? cardNumber.replace(/(\d{4})/g, '$1 ').trim() : "НЕТ НОМЕРА";
+    log(`Код: ${row.client_code} | Карта: ${prettyCard}`);
+    log(`Продукт: ${brandName} ${prodName}`);
+    log(`Дизайн: ${designName} (${designCode})`);
+    log(`Валюта: ${currency}`);
+    log(`Сессия: ${sessionId.slice(0,8)}...`);
+    log(`Файл: public/printFile/PrintResult.CPS2`);
+    log(`===================================================================`);
 
-    // ПЕРЕЗАПИСЫВАЕМ PrintResult.CPS2 ТОЛЬКО НАЙДЕННОЙ СТРОКОЙ
     fs.writeFile(RESULT_FILE, originalLine + "\n", "utf8", (err) => {
       if (err) {
-        console.error("Ошибка записи в PrintResult.CPS2:", err);
-        return res.json({ success: false, error: "Не удалось записать результат" });
+        log(`ОШИБКА ЗАПИСИ PrintResult.CPS2 → ${err.message}`);
+        return res.json({ success: false, error: "Ошибка записи" });
       }
-
-      console.log(`Карта выдана (оригинальная строка): ${cardNumber}`);
       res.json({ success: true });
     });
   });
-});
-// === Служебные роуты ===
-app.get("/mobile-scan.html", (req, res) => {
-  const sid = req.query.sid;
-  if (sid && /^[a-z0-9]{32}$/.test(sid)) {
-    res.sendFile(path.join(__dirname, "public", "mobile-scan.html"));
-  } else res.status(400).send("Bad sid");
-});
-
-app.get("/PrintResult.CPS2", (req, res) => {
-  res.type("text/plain; charset=utf-8");
-  res.sendFile(RESULT_FILE);
 });
 
 // Очистка старых сессий
