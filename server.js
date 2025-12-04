@@ -535,7 +535,7 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
-// === API: обработка сканирования (С ЖЁСТКОЙ ПРОВЕРКОЙ НАЛИЧИЯ КАРТЫ В .CPS2) ===
+// === API: обработка сканирования (КОПИРУЕМ ТОЧНУЮ СТРОКУ ИЗ .CPS2) ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
   if (!sessionId || !customerCode) {
@@ -563,8 +563,9 @@ app.post("/api/scan", (req, res) => {
       return res.json({ success: false, error: "У клиента нет номера карты" });
     }
 
-    // 2. Проверяем — есть ли этот номер хотя бы в одном .CPS2 файле в /prints
-    let cardFoundInPrintFiles = false;
+    // 2. Ищем ТОЧНУЮ строку с этим номером карты в любом .cps2 файле
+    let originalLine = null;
+
     try {
       const printsDir = path.join(__dirname, "public", "prints");
       const files = fs.readdirSync(printsDir);
@@ -572,21 +573,30 @@ app.post("/api/scan", (req, res) => {
       for (const file of files) {
         if (!file.toLowerCase().endsWith(".cps2")) continue;
 
-        const content = fs.readFileSync(path.join(printsDir, file), "utf8");
-        if (content.includes(cardNumber)) {
-          cardFoundInPrintFiles = true;
-          break;
+        const filePath = path.join(printsDir, file);
+        const content = fs.readFileSync(filePath, "utf8");
+        const lines = content.split(/\r?\n/);
+
+        for (const line of lines) {
+          if (line.trim() === "") continue;
+          // Проверяем, что в строке есть номер карты (даже если он с пробелами или в другом формате)
+          if (line.includes(cardNumber) || line.replace(/\s/g, "").includes(cardNumber)) {
+            originalLine = line;
+            break;
+          }
         }
+        if (originalLine) break;
       }
     } catch (e) {
       console.error("Ошибка чтения папки prints:", e);
       return res.json({ success: false, error: "Ошибка проверки готовности карты" });
     }
 
-  if (!cardFoundInPrintFiles) {
-      session.notReady = true;                    // ← ВАЖНО!
-      session.scanned = true;                     // ← ТОЖЕ ВАЖНО! (чтобы статус видел)
-      session.customerCode = code;                // ← и это
+    // Если строка не найдена — карта ещё не напечатана
+    if (!originalLine) {
+      session.notReady = true;
+      session.scanned = true;
+      session.customerCode = code;
       return res.json({
         success: false,
         notReady: true,
@@ -594,7 +604,7 @@ app.post("/api/scan", (req, res) => {
       });
     }
 
-    // Если карта найдена в .CPS2 — можно выдавать
+    // УСПЕХ: нашли оригинальную строку!
     session.scanned = true;
     session.customerCode = code;
 
@@ -603,21 +613,14 @@ app.post("/api/scan", (req, res) => {
       return res.json({ success: false, error: "Выбор продукта не завершён" });
     }
 
-    // Формируем строку для PrintResult.CPS2 (только если ещё нет — но это уже не важно)
-    const name = `${row.first_name || "ԱՆՈՒՆ"} ${row.last_name || "ԱԶԳԱՆՈՒՆ"}`.trim();
-    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
-    const design = sel.designCode || "UNKNOWN";
-    const cur = sel.currency || "AMD";
-
-    const line = `${cardNumber}\t${name}\t${now}\t${design}\t${cur}\tISSUED`;
-
-    fs.appendFile(RESULT_FILE, line + "\n", "utf8", (err) => {
+    // ПЕРЕЗАПИСЫВАЕМ PrintResult.CPS2 ТОЛЬКО НАЙДЕННОЙ СТРОКОЙ
+    fs.writeFile(RESULT_FILE, originalLine + "\n", "utf8", (err) => {
       if (err) {
         console.error("Ошибка записи в PrintResult.CPS2:", err);
-        return res.json({ success: false, error: "Не удалось записать выдачу" });
+        return res.json({ success: false, error: "Не удалось записать результат" });
       }
 
-      console.log(`Карта выдана: ${cardNumber} — ${name}`);
+      console.log(`Карта выдана (оригинальная строка): ${cardNumber}`);
       res.json({ success: true });
     });
   });
@@ -645,7 +648,26 @@ setInterval(() => {
 
 // === SERVER START ===
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("Unibank моментальная выдача запущена!");
-  console.log(`Ссылка на результат: http://localhost:${PORT}/PrintResult.CPS2`);
-});
+
+const httpsOptions = (() => {
+  try {
+    return {
+      key: fs.readFileSync("localhost-key.pem"),
+      cert: fs.readFileSync("localhost.pem")
+    };
+  } catch (e) {
+    return null;
+  }
+})();
+
+if (httpsOptions) {
+  require("https").createServer(httpsOptions, app).listen(PORT, "0.0.0.0", () => {
+    console.log("\nHTTPS сервер запущен с доверенным сертификатом!");
+    console.log(`   https://localhost:${PORT}`);
+    console.log(`   Ссылка на результат: https://localhost:${PORT}/PrintResult.CPS2\n`);
+  });
+} else {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log("HTTP режим (сертификаты не найдены)");
+  });
+}
