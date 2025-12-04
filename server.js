@@ -535,6 +535,7 @@ app.get("/api/status/:id", (req, res) => {
   });
 });
 
+// === API: обработка сканирования (С ЖЁСТКОЙ ПРОВЕРКОЙ НАЛИЧИЯ КАРТЫ В .CPS2) ===
 // === API: обработка сканирования (КОПИРУЕМ ТОЧНУЮ СТРОКУ ИЗ .CPS2) ===
 app.post("/api/scan", (req, res) => {
   const { sessionId, customerCode } = req.body;
@@ -563,7 +564,7 @@ app.post("/api/scan", (req, res) => {
       return res.json({ success: false, error: "У клиента нет номера карты" });
     }
 
-    // 2. Ищем ТОЧНУЮ строку с этим номером карты в любом .cps2 файле
+    // 2. Ищем ТОЧНУЮ строку с этим номером карты в любом .cps2 файл
     let originalLine = null;
 
     try {
