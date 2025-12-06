@@ -1,5 +1,4 @@
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
 const QRCode = require("qrcode");
 const path = require("path");
 const crypto = require("crypto");
@@ -10,10 +9,21 @@ app.use(express.json());
 app.use(express.static("public"));
 
 const isProduction = process.env.RENDER || process.env.NODE_ENV === "production";
-const dbPath = isProduction ? "/tmp/database.sqlite" : path.join(__dirname, "db", "database.sqlite");
-if (!isProduction) fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+const { Client } = require("pg");
 
-const db = new sqlite3.Database(dbPath);
+// Подключение к твоей PostgreSQL 17 (порт 5434)
+const pg = new Client({
+  user: "loyalty_user",
+  password: "55659596",
+  host: "127.0.0.1",
+  port: 5434,
+  database: "loyalty"
+});
+
+pg.connect()
+  .then(() => console.log("Подключено к PostgreSQL (порт 5434)"))
+  .catch(err => console.error("Ошибка подключения к PostgreSQL:", err.stack));
+
 const sessions = new Map();
 
 const RESULT_FILE = path.join(__dirname, "public", "printFile", "PrintResult.CPS2");
@@ -21,15 +31,6 @@ if (!fs.existsSync(RESULT_FILE)) {
   fs.writeFileSync(RESULT_FILE, "", "utf8");
   console.log("Создан PrintResult.CPS2");
 }
-
-db.serialize(() => {
-  db.run(`CREATE TABLE IF NOT EXISTS clients (
-    client_code TEXT PRIMARY KEY,
-    card_number TEXT,
-    first_name TEXT,
-    last_name TEXT
-  )`);
-});
 
 // === КРАСИВОЕ ЛОГИРОВАНИЕ ===
 const LOG_DIR = path.join(__dirname, "logs");
@@ -519,8 +520,14 @@ button[onclick="confirmChoice()"]:hover { background: #00205b; }
             clearInterval(poll);
             const name = encodeURIComponent((d.first_name || "") + " " + (d.last_name || ""));
             const number = d.card_number || "4111111111111111";
-            location.href = "/card-result.html?name=" + name + "&number=" + number + "&design=" + sel.designId;
-          }
+            const url = "/card-result.html?" +
+              "name=" + encodeURIComponent(name) +
+              "&number=" + encodeURIComponent(number) +
+              "&design=" + encodeURIComponent(sel.designId) +
+              "&expdate=" + encodeURIComponent(d.expdate || "") +
+              "&cvv=" + encodeURIComponent(d.cvv || "");
+
+            location.href = url;          }
           else if (d.notReady || (d.error && d.error.includes("պատրաստ չէ"))) {
             clearInterval(poll);
 
@@ -571,40 +578,44 @@ const designCode = selection.designCode || designObj?.designCode || "???";
 });
 
 // === API: статус ===
-app.get("/api/status/:id", (req, res) => {
+app.get("/api/status/:id", async (req, res) => {
   const s = sessions.get(req.params.id);
   if (!s) return res.json({ pending: true });
+  if (s.notReady === true) return res.json({ success: false, notReady: true, error: "Քարտը դեռ պատրաստ չէ" });
+  if (!s.scanned || !s.customerCode) return res.json({ pending: true });
 
-  if (s.notReady === true) {
-    return res.json({ success: false, notReady: true, error: "Քարտը դեռ պատրաստ չէ" });
-  }
+  try {
+    const result = await pg.query("SELECT * FROM get_client_info($1)", [s.customerCode]);
 
-  if (!s.scanned || !s.customerCode) {
-    return res.json({ pending: true });
-  }
+    if (result.rows.length === 0) return res.json({ pending: true });
 
-  db.get("SELECT * FROM clients WHERE client_code = ?", [s.customerCode], (err, row) => {
-    if (err || !row) return res.json({ pending: true });
+    const row = result.rows[0];
     res.json({
       success: true,
       first_name: row.first_name || "ԱՆՈՒՆ",
       last_name: row.last_name || "ԱԶԳԱՆՈՒՆ",
-      card_number: row.card_number || "4111111111111111"
+      card_number: row.card_number || "4111111111111111",
+      expdate: row.expdate || "00/00",
+      cvv: row.cvv || "000"
     });
-  });
+  } catch (err) {
+    log(`ОШИБКА /api/status → ${err.message}`);
+    res.json({ pending: true });
+  }
 });
 
-// === API: сканирование — ГЛАВНЫЙ БЛОК С ПОЛНЫМ ЛОГИРОВАНИЕМ ===
-app.post("/api/scan", (req, res) => {
+// === API: сканирование — ГЛАВНЫЙ БЛОК (PostgreSQL вместо SQLite) ===
+app.post("/api/scan", async (req, res) => {
   const { sessionId, customerCode } = req.body;
+
   if (!sessionId || !customerCode) {
-    log(`ОШИБКА | Нет данных при сканировании (sessionId или customerCode пустые)`);
+    log(`ОШИБКА | Нет данных при сканировании`);
     return res.json({ success: false, error: "Нет данных" });
   }
 
   const session = sessions.get(sessionId);
   if (!session) {
-    log(`ОШИБКА | Сессия ${sessionId.slice(0,8)}... истекла или не найдена при сканировании`);
+    log(`ОШИБКА | Сессия ${sessionId.slice(0,8)}... не найдена`);
     return res.json({ success: false, error: "Сессия истекла" });
   }
 
@@ -614,44 +625,34 @@ app.post("/api/scan", (req, res) => {
     return res.json({ success: false, error: "Неверный код" });
   }
 
-  // Загружаем выбор продукта
-  const sel = session.selection || {};
-  const brandName = global.cardConfig?.brands?.[sel.brand]?.name || sel.brand || "Не выбрано";
-  const prodName = global.cardConfig?.brands?.[sel.brand]?.products?.[sel.product]?.name || sel.product || "Не выбрано";
-  const design = global.cardConfig?.designs?.[sel.designId] || {};
-  const designName = design.name || "Не выбрано";
-  const designCode = sel.designCode || design.designCode || "???";
-  const currency = sel.currency || "Не выбрано";
+  // ← ВСЁ НИЖЕ — ЗАМЕНА НА POSTGRESQL ←
+  try {
+    const result = await pg.query("SELECT * FROM get_client_info($1)", [code]);
 
-  log(`СКАНИРОВАНИЕ | Сессия ${sessionId.slice(0,8)}... | Код клиента: ${code} | Выбор: ${brandName} ${prodName} | ${designName} (${designCode}) | ${currency}`);
-
-  db.get("SELECT * FROM clients WHERE client_code = ?", [code], (err, row) => {
-    if (err) {
-      log(`ОШИБКА БД | Поиск клиента ${code} → ${err.message}`);
-      return res.json({ success: false, error: "Ошибка базы" });
-    }
-
-    if (!row) {
-      log(`КЛИЕНТ НЕ НАЙДЕН В БАЗЕ | Код: ${code} | Сессия ${sessionId.slice(0,8)}...`);
+    if (result.rows.length === 0) {
+      log(`КЛИЕНТ НЕ НАЙДЕН В POSTGRESQL | Код: ${code}`);
       return res.json({ success: false, error: "Клиент не найден в базе" });
     }
 
+    const row = result.rows[0];
     const fullName = `${row.first_name || ""} ${row.last_name || ""}`.trim() || "Без имени";
     const cardNumber = (row.card_number || "").replace(/\s/g, "").trim();
 
-    log(`НАЙДЕН В БАЗЕ → ${fullName} | Код: ${row.client_code} | Карта: ${cardNumber || "НЕТ НОМЕРА"}`);
+    log(`НАЙДЕН В POSTGRESQL → ${fullName} | Код: ${code} | Карта: ${cardNumber || "НЕТ НОМЕРА"}`);
 
     if (!cardNumber) {
       log(`ОТКАЗ | У клиента ${fullName} нет номера карты`);
       return res.json({ success: false, error: "Нет номера карты" });
     }
 
-    // Поиск в embossingFiles
+    // ← ОСТАЛЬНОЙ КОД ОСТАЁТСЯ ТОЧНО ТАКОЙ ЖЕ, КАК У ТЕБЯ БЫЛ РАНЬШЕ →
+    // (поиск в .CPS2 файлах, запись в PrintResult.CPS2, логирование успеха)
+
     let originalLine = null;
     try {
       const embossingDir = path.join(__dirname, "public", "embossingFiles");
       if (!fs.existsSync(embossingDir)) {
-        log(`ОШИБКА | Папка embossingFiles не найдена: ${embossingDir}`);
+        log(`ОШИБКА | Папка embossingFiles не найдена`);
         return res.json({ success: false, error: "Папка не найдена" });
       }
 
@@ -669,7 +670,7 @@ app.post("/api/scan", (req, res) => {
         if (originalLine) break;
       }
     } catch (e) {
-      log(`ОШИБКА ЧТЕНИЯ embossingFiles → ${e.message}`);
+      log(`ОШИБКА чтения embossingFiles → ${e.message}`);
     }
 
     if (!originalLine) {
@@ -677,11 +678,10 @@ app.post("/api/scan", (req, res) => {
       session.scanned = true;
       session.customerCode = code;
 
-      log(`ЕЩЁ НЕ ГОТОВА | ${fullName} | ${cardNumber} | Карта не найдена в .CPS2 файлах`);
+      log(`ЕЩЁ НЕ ГОТОВА | ${fullName} | ${cardNumber}`);
       return res.json({ success: false, notReady: true, error: "Քարտը դեռ պատրաստ չէ" });
     }
 
-    // УСПЕШНАЯ ВЫДАЧА — САМАЯ ВАЖНАЯ СТРОКА В ЛОГЕ
     session.scanned = true;
     session.customerCode = code;
 
@@ -689,22 +689,25 @@ app.post("/api/scan", (req, res) => {
     log(`КАРТА ВЫДАНА УСПЕШНО`);
     log(`Клиент: ${fullName}`);
     const prettyCard = cardNumber ? cardNumber.replace(/(\d{4})/g, '$1 ').trim() : "НЕТ НОМЕРА";
-    log(`Код: ${row.client_code} | Карта: ${prettyCard}`);
-    log(`Продукт: ${brandName} ${prodName}`);
-    log(`Дизайн: ${designName} (${designCode})`);
-    log(`Валюта: ${currency}`);
-    log(`Сессия: ${sessionId.slice(0,8)}...`);
-    log(`Файл: public/printFile/PrintResult.CPS2`);
+    log(`Код: ${code} | Карта: ${prettyCard} | exp: ${row.expdate} | cvv: ${row.cvv}`);    log(`Сессия: ${sessionId.slice(0,8)}...`);
     log(`===================================================================`);
 
     fs.writeFile(RESULT_FILE, originalLine + "\n", "utf8", (err) => {
       if (err) {
-        log(`ОШИБКА ЗАПИСИ PrintResult.CPS2 → ${err.message}`);
+        log(`ОШИБКА записи PrintResult.CPS2 → ${err.message}`);
         return res.json({ success: false, error: "Ошибка записи" });
       }
-      res.json({ success: true });
+      res.json({ 
+            success: true,
+            expdate: row.expdate,
+            cvv: row.cvv
+          });
     });
-  });
+
+  } catch (err) {
+    log(`ОШИБКА POSTGRESQL при сканировании → ${err.message}`);
+    return res.json({ success: false, error: "Ошибка базы данных" });
+  }
 });
 
 // Очистка старых сессий

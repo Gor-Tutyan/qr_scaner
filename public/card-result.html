@@ -41,42 +41,58 @@
     <div class="success" id="statusText">Քարտը հաջողությամբ տրամադրվել է</div>
   </div>
 
-  <script>
-    const params = new URLSearchParams(location.search);
-    const name = decodeURIComponent(params.get('name') || 'ՀԱՅԿ ՀԱՅԿԱԶՈՒՆ').toUpperCase();
-    const numberParam = params.get('number');
-    const designId = params.get('design');
+<script>
+  const params = new URLSearchParams(location.search);
+  const name = decodeURIComponent(params.get('name') || 'ՀԱՅԿ ՀԱՅԿԱԶՈՒՆ').toUpperCase();
+  const numberParam = params.get('number');
+  const designId = params.get('design');
 
-    // Заполняем имя
-    document.getElementById('clientName').textContent = name;
+  // Новые параметры — получаем из URL
+  const expdate = params.get('expdate') || null;
+  const cvv = params.get('cvv') || null;
 
-    // === ПРОВЕРКА: если номер не передан или это заглушка — значит карта НЕ готова ===
-    if (!numberParam || numberParam === '4111111111111111' || numberParam.trim() === '') {
-      document.querySelector('.info').innerHTML = `
-        <div class="error">
-          Քարտը դեռ պատրաստ չէ
-          <small>Համոզվեք, որ քարտը արդեն տպագրված է<br>և առկա է .CPS2 ֆայլում</small>
-        </div>
-      `;
-      // Оставляем fallback изображение
-      document.getElementById('cardImage').src = '/cards/fallback.jpg?t=' + Date.now();
-    } else {
-      // Нормальная выдача — показываем номер и дизайн
-      const number = numberParam.replace(/(.{4})/g, '$1 ').trim();
-      document.getElementById('clientNumber').textContent = number;
+  // Заполняем имя
+  document.getElementById('clientName').textContent = name;
 
-      // Загружаем правильный дизайн карты
-      fetch('/config/cards.json?t=' + Date.now())
-        .then(r => r.json())
-        .then(cfg => {
-          if (designId && cfg.designs?.[designId]?.image) {
-            document.getElementById('cardImage').src = cfg.designs[designId].image + '?t=' + Date.now();
-          }
-        })
-        .catch(() => {
-          document.getElementById('cardImage').src = '/cards/fallback.jpg?t=' + Date.now();
-        });
+  // Проверка: если номер заглушка — значит карта ещё не готова
+  if (!numberParam || numberParam === '4111111111111111' || numberParam.trim() === '') {
+    document.querySelector('.info').innerHTML = `
+      <div class="error">
+        Քարտը դեռ պատրաստ չէ
+        <small>Համոզվեք, որ քարտը արդեն տպագրված է<br>և առկա է .CPS2 ֆայլում</small>
+      </div>
+    `;
+    document.getElementById('cardImage').src = '/cards/fallback.jpg?t=' + Date.now();
+  } else {
+    // === НОРМАЛЬНАЯ ВЫДАЧА КАРТЫ ===
+    const number = numberParam.replace(/(.{4})/g, '$1 ').trim();
+    document.getElementById('clientNumber').textContent = number;
+
+    // Загружаем дизайн карты
+    fetch('/config/cards.json?t=' + Date.now())
+      .then(r => r.json())
+      .then(cfg => {
+        if (designId && cfg.designs?.[designId]?.image) {
+          document.getElementById('cardImage').src = cfg.designs[designId].image + '?t=' + Date.now();
+        }
+      })
+      .catch(() => {});
+
+    // === ДОБАВЛЯЕМ СРОК И CVV КРАСИВО ===
+    let extraInfo = '';
+    if (expdate && expdate !== '00/00') {
+      extraInfo += `<div style="margin:12px 0;font-size:20px;"><strong>Valid Thru:</strong> ${expdate}</div>`;
     }
-  </script>
+    if (cvv && cvv !== '000' && cvv !== 'null') {
+      extraInfo += `<div style="margin:8px 0;font-size:20px;color:#d32f2f;"><strong>CVV:</strong> ${cvv}</div>`;
+    }
+
+    if (extraInfo) {
+      document.querySelector('.info').insertAdjacentHTML('beforeend', extraInfo);
+    }
+
+    document.getElementById('statusText').textContent = "Քարտը հաջողությամբ տրամադրվել է ✓";
+  }
+</script>
 </body>
 </html>

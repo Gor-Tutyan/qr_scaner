@@ -4,6 +4,7 @@
     "main": "server.js",
     "dependencies": {
         "express": "^4.21.2",
+        "pg": "^8.16.3",
         "qrcode": "^1.5.4",
         "sqlite3": "^5.1.7"
     },
@@ -11,5 +12,17 @@
         "start": "node server.js",
         "seed": "node seed-db.js",
         "dev": "node server.js"
-    }
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Gor-Tutyan/qr_scaner.git"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "bugs": {
+        "url": "https://github.com/Gor-Tutyan/qr_scaner/issues"
+    },
+    "homepage": "https://github.com/Gor-Tutyan/qr_scaner#readme",
+    "description": ""
 }
